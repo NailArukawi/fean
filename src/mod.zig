@@ -27,8 +27,6 @@ pub const Fean = struct {
             .compiler_meta = compiler_meta,
         };
 
-        fean.thread.chunk.debug();
-
         fean.thread.execute();
 
         return fean;
@@ -43,6 +41,7 @@ pub const FeanConfig = struct {
     file_lookup: ?*const fn (compiler.token.Span) FileLookup = null,
 
     file_id_count: u32 = 1,
+    compile_flags: FeanCompileFlags,
 
     pub fn default(allocator: Allocator) @This() {
         return @This(){
@@ -53,11 +52,23 @@ pub const FeanConfig = struct {
             .file_lookup = null,
 
             .file_id_count = 1,
+            .compile_flags = .{},
         };
     }
 };
 
+// how fean asks for files in case of error
+// it asks for the file by name.
 pub const FileLookup = struct {
     filename: []const u8,
     content: []const u8,
+};
+
+// how you set if you want the code to be optimized
+pub const FeanCompileFlags = struct {
+    // folds consts so that the pool will not have dupes.
+    literal_const_folding: bool = true,
+
+    // will compute literals at compile time
+    literal_folding: bool = true,
 };

@@ -49,9 +49,6 @@ pub const Dict = struct {
             i += 1;
         }
 
-        std.debug.print("items: {}\n", .{result.item.resolve(*@This())});
-        std.debug.print("itemsobj: {}\n", .{result.obj.object()});
-
         return result.obj;
     }
 

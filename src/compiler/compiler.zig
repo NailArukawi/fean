@@ -494,6 +494,7 @@ pub const CompilerMeta = struct {
 
 pub const Compiler = struct {
     allocator: Allocator,
+    config: *FeanConfig,
     literals: *Stack(Item),
     literal_count: *u40,
     literals_typing: *Stack(LitKind),
@@ -506,6 +507,7 @@ pub const Compiler = struct {
 
         var self = @This(){
             .allocator = config.allocator,
+            .config = config,
             .literals = &meta.literals,
             .literal_count = &meta.literal_count,
             .literals_typing = &meta.literals_typing,
@@ -771,8 +773,46 @@ pub const Compiler = struct {
     //}
 
     fn push_literal(self: *@This(), literal: Item, kind: LitKind) !Address {
+        // folding consts to remove dupes
+        if (self.config.compile_flags.literal_const_folding) {
+            for (self.literals_typing.as_slice(), 0..) |lk, i| {
+                if (lk != kind) {
+                    continue;
+                }
+
+                var same: bool = false;
+                const found = self.literals.get(i);
+                switch (lk) {
+                    .u64 => same = found.u64 == literal.u64,
+                    .u32 => same = found.u32 == literal.u32,
+                    .u16 => same = found.u16 == literal.u16,
+                    .u8 => same = found.u8 == literal.u8,
+                    .i64 => same = found.i64 == literal.i64,
+                    .i32 => same = found.i32 == literal.i32,
+                    .i16 => same = found.i16 == literal.i16,
+                    .i8 => same = found.i8 == literal.i8,
+                    .f64 => same = found.f64 == literal.f64,
+                    .f32 => same = found.f32 == literal.f32,
+                    .bool => unreachable,
+                    .Text => {
+                        const found_text = found.resolve_object().text();
+                        same = literal.resolve_object().text().eq(found_text);
+                    },
+
+                    // objects that are not builtin
+                    .Object => unreachable,
+                }
+
+                // we have a dupe!
+                if (same) {
+                    return Address.new_literal(@intCast(u56, i));
+                }
+            }
+        }
+        // no dupe found!
         try self.literals.push(literal);
         try self.literals_typing.push(kind);
+
         self.literal_count.* += 1;
         return Address.new_literal(@intCast(u56, self.literal_count.*));
     }
@@ -812,6 +852,6 @@ const LitKind = enum {
     bool,
     Text,
 
-    // obhects that are not builtin
+    // objects that are not builtin
     Object,
 };

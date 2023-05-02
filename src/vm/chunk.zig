@@ -34,10 +34,4 @@ pub const Chunk = struct {
     pub fn append_op(self: *@This(), op: Opcode) !void {
         try self.code.append(op);
     }
-
-    pub fn debug(self: *@This()) void {
-        for (self.code.items) |op| {
-            op.debug();
-        }
-    }
 };

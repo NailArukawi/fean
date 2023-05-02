@@ -20,21 +20,16 @@ pub const Global = struct {
 
     pub fn default(heap: *Heap) !@This() {
         const result = try @This().create(heap, GLOBALS_INITAL_SIZE);
-        std.debug.print("items: {}\n", .{result.items});
-        std.debug.print("itemsobj: {}\n", .{result.items.object()});
         return result;
     }
 
     pub inline fn get(self: *@This(), name_text: Item) ?Item {
-        std.debug.print("ree:{}\n", .{self.items.object()});
         var dict = self.items.object().dict();
         return dict.get(name_text);
     }
 
     pub inline fn set(self: *@This(), name_text: Item, value: Item) !bool {
         var dict = self.items.object().dict();
-        const t = name_text.text();
-        std.debug.print("set: {s}, as: {} \n", .{ t.bytes()[0..1], value });
         return dict.set(name_text, value);
     }
 

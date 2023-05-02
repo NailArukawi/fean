@@ -160,16 +160,12 @@ pub const Thread = struct {
                     const a = opcode.a();
                     const y = opcode.y();
                     self.register[a] = self.load_literal(y);
-                    std.debug.print("{} = LOAD [y: {}]\n", .{ a, y });
                 },
                 .load_global => {
                     const name_register = opcode.a();
                     const name: Item = self.register[name_register];
                     const load_register = opcode.b();
-                    const ree = name.object.object().text();
-                    std.debug.print("git: {s}\n", .{ree.as_slice()});
                     const value = self.get_global(name);
-                    std.debug.print("got: {s}\n", .{ree.as_slice()});
                     self.register[load_register] = value;
                 },
                 .store_global => {
