@@ -229,7 +229,12 @@ pub const Instr = union(enum) {
             .close_upvalue => unreachable,
 
             // meta
-            .block => unreachable,
+            .block => |b| {
+                for (b.body.as_slice(), 0..) |ir, i| {
+                    std.debug.print("   [{}]:\t({s})\n", .{ i, try ir.debug(buffer) });
+                }
+                return "Block end";
+            },
 
             // extended
             .extended => unreachable,
@@ -520,6 +525,13 @@ pub const Scope = union(enum) {
         };
     }
 
+    pub inline fn is_head(self: @This()) bool {
+        switch (self) {
+            .head => return true,
+            .block => return false,
+        }
+    }
+
     pub fn lookup_symbol(self: @This(), identifier: []const u8) ?Symbol {
         switch (self) {
             .head => |head| return head.lookup_symbol(identifier),
@@ -586,6 +598,7 @@ pub const Compiler = struct {
     literal_count: *u40,
     literals_typing: *Stack(LitKind),
     objects: *Stack(*Object),
+    depth: usize = 0,
 
     pub fn compile(src: []const u8, config: *FeanConfig, meta: *CompilerMeta) !*IR {
         var ast = try Parser.parse(src, config);
@@ -618,26 +631,32 @@ pub const Compiler = struct {
         var head_body = ast.head;
 
         for (head_body) |n| {
-            try self.generate(n, head, null);
+            _ = try self.generate(n, head, null);
         }
 
         return head.head;
     }
 
-    fn generate(self: *@This(), node: *Node, scope: Scope, result: ?Address) anyerror!void {
+    fn generate(self: *@This(), node: *Node, scope: Scope, result: ?Address) anyerror!?Address {
         switch (node.*) {
             .scope => |s| {
-                // todo symbol table
-                var block = try Scope.create_block(self.allocator, null);
+                // todo maybe allow scoped typing
+                var block = try Scope.create_block(self.allocator, s.symbols);
 
                 for (s.statments.?) |stmnt| {
-                    try self.generate(stmnt, block, null);
+                    _ = try self.generate(stmnt, block, null);
                 }
 
                 try scope.push_instr(Instr{ .block = block.block });
             },
-            .variable => try self.generate_variable(node, scope),
-            .constant => try self.generate_variable(node, scope),
+            .variable => {
+                if (scope.is_head()) {
+                    _ = try self.generate_global_variable(node, scope);
+                } else {
+                    _ = try self.generate_local_variable(node, scope);
+                }
+            },
+            .constant => try self.generate_global_variable(node, scope),
             .assignment => unreachable,
             .statment => |s| {
                 switch (s.kind) {
@@ -646,11 +665,11 @@ pub const Compiler = struct {
                         const address = result orelse scope.get_temp().?;
                         defer if (result == null) scope.drop_temp();
 
-                        try self.generate(s.value, scope, address);
+                        _ = try self.generate(s.value, scope, address);
                     },
                     .Return => {
                         const address = Address.new_register(0);
-                        try self.generate(s.value, scope, address);
+                        _ = try self.generate(s.value, scope, address);
                         try scope.push_instr(.ret);
                     },
                 }
@@ -669,12 +688,17 @@ pub const Compiler = struct {
                 const address = if (result != null) result.? else scope.get_temp().?;
                 defer if (result == null) scope.drop_temp();
 
-                try self.generate_literal(node, scope, address);
+                var moved = try self.generate_literal(node, scope, address);
+                if (moved != null) {
+                    return moved;
+                }
             },
         }
+
+        return null;
     }
 
-    fn generate_variable(self: *@This(), node: *Node, scope: Scope) !void {
+    fn generate_global_variable(self: *@This(), node: *Node, scope: Scope) !void {
         const variable = node.variable;
 
         if (variable.value != null) {
@@ -694,9 +718,20 @@ pub const Compiler = struct {
             } });
 
             // the value we want to put in the global variable
-            const tmp = scope.get_temp().?;
-            defer scope.drop_temp();
-            try self.generate(variable.value.?, scope, tmp);
+            var tmp = scope.get_temp().?;
+            var tmp_moved = false;
+            var gen_result = try self.generate(variable.value.?, scope, tmp);
+            defer {
+                if (!tmp_moved) {
+                    scope.drop_temp();
+                }
+            }
+
+            if (gen_result != null) {
+                tmp_moved = true;
+                scope.drop_temp();
+                tmp = gen_result.?;
+            }
 
             try scope.push_instr(.{ .store_global = .{
                 .a = tmp,
@@ -711,6 +746,21 @@ pub const Compiler = struct {
             .value = Item.default(),
             .symbol = symbol,
         });
+    }
+
+    fn generate_local_variable(self: *@This(), node: *Node, scope: Scope) !void {
+        const variable = node.variable;
+        const register = scope.get_reg().?;
+
+        // todo maybe try to resolve the kind one last time?
+        var symbol = scope.lookup_symbol(variable.name).?;
+
+        symbol.binding = register.register();
+        symbol.depth = self.depth;
+
+        if (variable.value != null) {
+            _ = try self.generate(variable.value.?, scope, register);
+        }
     }
 
     fn generate_head_constant(self: *@This(), node: *Node, head: *IR) !void {
@@ -756,16 +806,41 @@ pub const Compiler = struct {
         const exp = node.binary_expression;
 
         // todo handle no registers!
-        const lhs = scope.get_temp().?;
-        try self.generate(exp.lhs, scope, lhs);
-        const rhs = scope.get_temp().?;
-        try self.generate(exp.rhs, scope, rhs);
-        defer scope.drop_temps(2);
+        var lhs = scope.get_temp().?;
+        var lhs_moved = false;
+        var gen_result = try self.generate(exp.lhs, scope, lhs);
+        defer {
+            if (!lhs_moved) {
+                scope.drop_temp();
+            }
+        }
+
+        if (gen_result != null) {
+            lhs_moved = true;
+            scope.drop_temp();
+            lhs = gen_result.?;
+        }
+
+        var rhs = scope.get_temp().?;
+        var rhs_moved = false;
+        gen_result = try self.generate(exp.rhs, scope, rhs);
+        defer {
+            if (!rhs_moved) {
+                scope.drop_temp();
+            }
+        }
+
+        if (gen_result != null) {
+            rhs_moved = true;
+            scope.drop_temp();
+            rhs = gen_result.?;
+        }
 
         var kind = switch (exp.kind.?) {
             .unresolved => |k| k,
             .resolved => |s| s.name,
         };
+
         switch (exp.op.data.symbol) {
             .plus => {
                 if (mem.eql(u8, kind, "u64")) {
@@ -795,7 +870,7 @@ pub const Compiler = struct {
         }
     }
 
-    fn generate_literal(self: *@This(), node: *Node, scope: Scope, result: Address) !void {
+    fn generate_literal(self: *@This(), node: *Node, scope: Scope, result: Address) !?Address {
         switch (node.literal.data) {
             .integer => |val| {
                 var item: Item = Item{ .i64 = val };
@@ -806,6 +881,8 @@ pub const Compiler = struct {
                     .result = result,
                     .a = lit,
                 } });
+
+                return null;
             },
             .decimal => |val| {
                 var item: Item = Item{ .f64 = val };
@@ -816,37 +893,53 @@ pub const Compiler = struct {
                     .result = result,
                     .a = lit,
                 } });
+
+                return null;
             },
             .identifier => |name_raw| {
-                const name = try self.copy_text(name_raw);
-                const name_lit = try self.push_literal(.{ .object = name }, .Text);
+                const symbol = scope.lookup_symbol(name_raw);
 
-                // the stack adress for the lookup name of the global variable
-                const global_name = scope.get_temp().?;
-                defer scope.drop_temp();
+                if (symbol.?.global) {
+                    const name = try self.copy_text(name_raw);
+                    const name_lit = try self.push_literal(.{ .object = name }, .Text);
 
-                try scope.push_instr(.{ .load_literal = .{
-                    .result = global_name,
-                    .a = name_lit,
-                } });
+                    // the stack adress for the lookup name of the global variable
+                    const global_name = scope.get_temp().?;
+                    defer scope.drop_temp();
 
-                // load the global into a register
-                if (scope.lookup_global(name_raw).?.object) {
-                    try scope.push_instr(.{ .load_global_obj = .{
-                        .result = result,
-                        .a = global_name,
+                    try scope.push_instr(.{ .load_literal = .{
+                        .result = global_name,
+                        .a = name_lit,
                     } });
+
+                    // load the global into a register
+                    if (scope.lookup_global(name_raw).?.object) {
+                        try scope.push_instr(.{ .load_global_obj = .{
+                            .result = result,
+                            .a = global_name,
+                        } });
+                    } else {
+                        try scope.push_instr(.{ .load_global = .{
+                            .result = result,
+                            .a = global_name,
+                        } });
+                    }
+
+                    return null;
                 } else {
-                    try scope.push_instr(.{ .load_global = .{
-                        .result = result,
-                        .a = global_name,
-                    } });
+                    // todo upvalues
+                    if (self.depth != symbol.?.depth) {
+                        // we have an upvalue
+                        unreachable;
+                    } else {
+                        return Address.new_register(symbol.?.binding);
+                    }
                 }
-
-                return;
             },
             else => unreachable,
         }
+
+        return null;
     }
 
     //fn generate_binary_expression(self: *@This(), node: *Node, scope: *IRBlock) !void {

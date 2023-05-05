@@ -11,7 +11,7 @@ pub const Op = enum(u8) {
     invoke_extern,
     make_closure,
 
-    // Memory (10)
+    // Memory (8)
     load_literal,
     load_literal_obj,
     load_global,
@@ -19,9 +19,7 @@ pub const Op = enum(u8) {
     store_global,
     get_upvalue,
     get_upvalue_obj,
-    set_upvalue,
-    open_upvalue,
-    close_upvalue,
+    copy,
 
     // Arithmetic (40)
     add_u64,

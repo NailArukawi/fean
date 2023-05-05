@@ -37,13 +37,13 @@ pub const Assembler = struct {
         };
 
         for (ir.body.as_slice()) |instr| {
-            try assembler.assemble_head(instr);
+            try assembler.assemble_instr(instr);
         }
 
         return assembler.result;
     }
 
-    fn assemble_head(self: *@This(), instr: Instr) !void {
+    fn assemble_instr(self: *@This(), instr: Instr) !void {
         switch (instr) {
             // Misc
             .no_op => unreachable,
@@ -177,7 +177,11 @@ pub const Assembler = struct {
             .div_f32 => unreachable,
 
             // meta
-            .block => unreachable,
+            .block => |blck| {
+                for (blck.body.as_slice()) |block_instr| {
+                    try self.assemble_instr(block_instr);
+                }
+            },
 
             // extended
             .extended => unreachable,

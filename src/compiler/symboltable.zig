@@ -14,8 +14,9 @@ pub const SymbolTable = struct {
     name: []const u8,
     kind: ?SymbolKind,
     size: usize,
-    global: bool,
-    binding: usize,
+    global: bool = false,
+    binding: u10 = 0,
+    depth: usize = 0,
     next: ?*@This(),
 
     pub fn create(allocator: Allocator) !*@This() {
