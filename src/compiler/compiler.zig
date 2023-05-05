@@ -667,7 +667,7 @@ pub const Compiler = struct {
                 }
             },
             .constant => try self.generate_global_variable(node, scope),
-            .assignment => unreachable,
+            .assignment => try self.generate_assignment(node, scope),
             .statment => |s| {
                 switch (s.kind) {
                     .Expression => {
@@ -810,6 +810,24 @@ pub const Compiler = struct {
             .value = Item.default(),
             .symbol = symbol,
         });
+    }
+
+    fn generate_assignment(self: *@This(), node: *Node, scope: Scope) !void {
+        const assignment = node.assignment;
+        const symbol = scope.lookup_symbol(assignment.name).?;
+
+        if (symbol.global) {
+            // todo assignment to global values
+        } else {
+            // todo upvalues
+            if (self.depth != symbol.depth) {
+                // we have an upvalue
+                unreachable;
+            } else {
+                const result = Address.new_register(symbol.binding);
+                _ = try self.generate(assignment.value, scope, result);
+            }
+        }
     }
 
     fn generate_binary_expression(self: *@This(), node: *Node, scope: Scope, result: Address) !void {

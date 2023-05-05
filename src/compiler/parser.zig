@@ -218,23 +218,24 @@ pub const Parser = struct {
     }
 
     fn expression(self: *@This(), scope: *Node) *Node {
-        var result = self.assignment(scope);
+        // variable (X: num)
+        if (self.check(.identifier) // X
+        and self.check_next(.equal) // =
+        ) {
+            return self.expression_assignment(scope);
+        }
 
-        return result;
+        return self.equality(scope);
     }
 
     // todo lookup symbol
-    fn assignment(self: *@This(), scope: *Node) *Node {
-        var result = self.equality(scope);
+    fn expression_assignment(self: *@This(), scope: *Node) *Node {
+        var identity = self.pop().?;
+        _ = self.pop().?; // =
+        var value = self.equality(scope);
 
-        const match = [_]TokenKind{.equal};
-        if (self.of_kinds(&match)) {
-            const lhs = result;
-            var rhs = self.comparison(scope);
-
-            result = self.allocator.create(Node) catch unreachable;
-            result.* = Node{ .assignment = .{ .name = lhs.literal.data.identifier, .symbol = null, .value = rhs } };
-        }
+        var result = self.allocator.create(Node) catch unreachable;
+        result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = value } };
 
         return result;
     }
