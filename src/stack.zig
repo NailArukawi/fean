@@ -36,6 +36,14 @@ pub fn Stack(comptime T: type) type {
             return stack;
         }
 
+        pub fn shrink_to_fit(self: *@This()) !void {
+            if (self.used == self.capacity) {
+                return;
+            }
+            self.inner = (try self.allocator.realloc(self.as_slice(), self.used)).ptr;
+            self.capacity = self.used;
+        }
+
         pub fn as_slice(self: *@This()) []T {
             return self.inner[0..self.used];
         }

@@ -17,7 +17,7 @@ pub const AST = struct {
 
 pub const Node = union(enum) {
     scope: struct {
-        parent: ?*@This(),
+        parent: ?*Node,
         statments: ?[]*Node,
         symbols: ?*SymbolTable,
         kinds: ?*KindTable,

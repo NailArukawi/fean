@@ -21,6 +21,7 @@ const FeanConfig = @import("../mod.zig").FeanConfig;
 const Allocator = std.mem.Allocator;
 const Map = std.AutoHashMap;
 const List = std.ArrayList;
+const Stack = @import("../stack.zig").Stack;
 
 pub const Parser = struct {
     allocator: Allocator,
@@ -160,6 +161,8 @@ pub const Parser = struct {
         // return expr;
         if (self.of_kind(.Return)) {
             return self.statment_return(scope);
+        } else if (self.of_kind(.curley_left)) {
+            return self.statment_block(scope);
         }
         return self.statment_expression(scope);
     }
@@ -183,6 +186,26 @@ pub const Parser = struct {
 
         result.* = Node{ .statment = .{ .kind = .Return, .value = expr } };
         return result;
+    }
+
+    fn statment_block(self: *@This(), scope: *Node) *Node {
+        var block = self.allocator.create(Node) catch unreachable;
+        block.* = Node{ .scope = .{
+            .parent = scope,
+            .statments = null,
+            .symbols = null,
+            .kinds = null,
+        } };
+
+        var stmnts = Stack(*Node).create(self.allocator, 16) catch unreachable;
+
+        while (!self.of_kind(.curley_right)) {
+            stmnts.push(self.declaration(block)) catch unreachable;
+        }
+
+        stmnts.shrink_to_fit() catch unreachable;
+        block.scope.statments = stmnts.as_slice();
+        return block;
     }
 
     fn statment_expression(self: *@This(), scope: *Node) *Node {
