@@ -1,5 +1,7 @@
+c : i64 = 10;
+
 {
     a : i64 = 2;
     b : i64 = 6;
-    return a + b;
+    return a + b + c;
 }

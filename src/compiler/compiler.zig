@@ -259,6 +259,8 @@ pub const Instr = union(enum) {
 };
 
 pub const IRBlock = struct {
+    parent: Scope,
+
     uptable: List(Symbol),
     body: Stack(Instr),
 
@@ -268,10 +270,11 @@ pub const IRBlock = struct {
     registers: u10 = 0,
     temporaries: u10 = 0,
 
-    pub fn create(allocator: Allocator, symbols: ?*SymbolTable) !*@This() {
+    pub fn create(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable) !*@This() {
         var result = try allocator.create(@This());
 
         result.* = @This(){
+            .parent = parent,
             .uptable = List(Symbol).init(allocator),
             .body = try Stack(Instr).create(allocator, 32),
             .symbols = symbols,
@@ -282,9 +285,9 @@ pub const IRBlock = struct {
 
     pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?Symbol {
         if (self.symbols == null) {
-            return null;
+            return self.parent.lookup_symbol(identifier);
         }
-        return self.symbols.?.lookup(identifier);
+        return self.symbols.?.lookup(identifier) orelse self.parent.lookup_symbol(identifier);
     }
 
     pub fn get_temp(self: *@This()) ?Address {
@@ -518,8 +521,8 @@ pub const Scope = union(enum) {
         };
     }
 
-    pub fn create_block(allocator: Allocator, symbols: ?*SymbolTable) !@This() {
-        var block = try IRBlock.create(allocator, symbols);
+    pub fn create_block(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable) !@This() {
+        var block = try IRBlock.create(allocator, parent, symbols);
         return @This(){
             .block = block,
         };
@@ -542,8 +545,15 @@ pub const Scope = union(enum) {
     pub fn lookup_global(self: @This(), identifier: []const u8) ?Global {
         switch (self) {
             .head => |head| return head.lookup_global(identifier),
-            // todo implement
-            .block => unreachable,
+            .block => |block| {
+                var cursor = block.parent;
+
+                while (!cursor.is_head()) {
+                    cursor = block.parent;
+                }
+
+                return cursor.head.lookup_global(identifier);
+            },
         }
     }
 
@@ -641,7 +651,7 @@ pub const Compiler = struct {
         switch (node.*) {
             .scope => |s| {
                 // todo maybe allow scoped typing
-                var block = try Scope.create_block(self.allocator, s.symbols);
+                var block = try Scope.create_block(self.allocator, scope, s.symbols);
 
                 for (s.statments.?) |stmnt| {
                     _ = try self.generate(stmnt, block, null);
