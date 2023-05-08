@@ -1,17 +1,20 @@
 const std = @import("std");
 
-// 79|256 used
+// 81|256 used
 pub const Op = enum(u8) {
-    // Misc (7)
+    // Misc (9)
     no_op = 0,
     ret,
     call,
     call_extern,
     invoke,
     invoke_extern,
-    make_closure,
+    dive,
+    ascend,
 
-    // Memory (8)
+    // Memory (10)
+    load_true,
+    load_false,
     load_literal,
     load_literal_obj,
     load_global,
@@ -77,6 +80,7 @@ pub const Op = enum(u8) {
     less_than_i8,
     less_than_f64,
     less_than_f32,
+
     less_equal_u64,
     less_equal_u32,
     less_equal_u16,
@@ -87,6 +91,13 @@ pub const Op = enum(u8) {
     less_equal_i8,
     less_equal_f64,
     less_equal_f32,
+
+    equal_bit,
+    equal_f64,
+    equal_f32,
+
+    not,
+
     if_jmp,
     jmp,
 

@@ -134,9 +134,13 @@ pub const Keyword = enum {
     Struct,
     Trait,
     Impl,
+    If,
+    Else,
     For,
     Pub,
     Return,
+    True,
+    False,
 };
 
 pub const TokenKind = enum {
@@ -184,9 +188,13 @@ pub const TokenKind = enum {
     Struct,
     Trait,
     Impl,
+    If,
+    Else,
     For,
     Pub,
     Return,
+    True,
+    False,
 
     pub fn translate_from(other: TokenData) @This() {
         switch (other) {
@@ -230,9 +238,13 @@ pub const TokenKind = enum {
                     .Struct => return @This().Struct,
                     .Trait => return @This().Trait,
                     .Impl => return @This().Impl,
+                    .If => return @This().If,
+                    .Else => return @This().Else,
                     .For => return @This().For,
                     .Pub => return @This().Pub,
                     .Return => return @This().Return,
+                    .True => return @This().True,
+                    .False => return @This().False,
                 }
             },
         }
@@ -279,9 +291,13 @@ pub const TokenKind = enum {
             .Struct => return TokenData.new_keyword(.Struct, Span.default()),
             .Trait => return TokenData.new_keyword(.Trait, Span.default()),
             .Impl => return TokenData.new_keyword(.Impl, Span.default()),
+            .If => return TokenData.new_keyword(.If, Span.default()),
+            .Else => return TokenData.new_keyword(.Else, Span.default()),
             .For => return TokenData.new_keyword(.For, Span.default()),
             .Pub => return TokenData.new_keyword(.Pub, Span.default()),
             .Return => return TokenData.new_keyword(.Return, Span.default()),
+            .True => return TokenData.new_keyword(.True, Span.default()),
+            .False => return TokenData.new_keyword(.False, Span.default()),
         }
     }
 };

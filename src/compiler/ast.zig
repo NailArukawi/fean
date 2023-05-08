@@ -139,6 +139,11 @@ pub const Node = union(enum) {
         kind: StatmentKind,
         value: *Node,
     },
+    conditional_if: struct {
+        condition: *Node,
+        if_then: *Node,
+        if_else: ?*Node,
+    },
     binary_expression: struct {
         kind: ?SymbolKind,
         lhs: *Node,

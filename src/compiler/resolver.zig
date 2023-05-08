@@ -103,13 +103,21 @@ pub const Resolver = struct {
             .statment => |v| {
                 return self.kind_visit(v.value, scope);
             },
+            .conditional_if => |cif| {
+                _ = cif;
+                return null;
+            },
             .binary_expression => |b| {
                 const l_kind = try self.kind_visit(b.lhs, scope);
                 const r_kind = try self.kind_visit(b.rhs, scope);
-                _ = r_kind;
 
                 // todo actually make work lol
-                node.binary_expression.kind = l_kind;
+                if (l_kind != null) {
+                    node.binary_expression.kind = l_kind;
+                } else {
+                    node.binary_expression.kind = r_kind;
+                }
+
                 return l_kind;
             },
             .unary_expression => |u| {
@@ -197,6 +205,12 @@ pub const Resolver = struct {
             },
             .statment => |v| {
                 try self.symbol_visit(v.value, scope);
+            },
+            .conditional_if => |cif| {
+                try self.symbol_visit(cif.if_then, scope);
+                if (cif.if_else != null) {
+                    try self.symbol_visit(cif.if_else.?, scope);
+                }
             },
             .binary_expression => |b| {
                 try self.symbol_visit(b.lhs, scope);

@@ -1,8 +1,8 @@
-c : i64 = 10;
+c : i64 = 69;
 
-{
-    a : i64 = 2;
-    b : i64 = 6;
-    a = 4;
-    return a + b + c;
+if (false) {
+    c = 420;
 }
+
+
+return c;

@@ -161,10 +161,36 @@ pub const Parser = struct {
         // return expr;
         if (self.of_kind(.Return)) {
             return self.statment_return(scope);
-        } else if (self.of_kind(.curley_left)) {
+        }
+        // we have an if
+        else if (self.of_kind(.If)) {
+            return self.statment_if(scope);
+        }
+        // a block of code
+        else if (self.of_kind(.curley_left)) {
             return self.statment_block(scope);
         }
         return self.statment_expression(scope);
+    }
+
+    fn statment_if(self: *@This(), scope: *Node) *Node {
+        var condition = self.expression(scope);
+        var if_then = self.statment(scope);
+        var if_else: ?*Node = null;
+
+        if (self.of_kind(.Else)) {
+            if_else = self.statment(scope);
+        }
+
+        var conditional = self.allocator.create(Node) catch unreachable;
+
+        conditional.* = Node{ .conditional_if = .{
+            .condition = condition,
+            .if_then = if_then,
+            .if_else = if_else,
+        } };
+
+        return conditional;
     }
 
     fn statment_print(self: *@This(), scope: *Node) *Node {
@@ -318,11 +344,11 @@ pub const Parser = struct {
     }
 
     fn primary(self: *@This(), scope: *Node) *Node {
-        //if(self.check(.false) or self.check(.true)) {
-        //    var result = self.allocator.create(Node) catch unreachable;
-        //    result.* = Node { .literal = self.pop().?};
-        //    return result;
-        //}
+        if (self.check(.True) or self.check(.False)) {
+            var result = self.allocator.create(Node) catch unreachable;
+            result.* = Node{ .literal = self.pop().? };
+            return result;
+        }
         //if(self.check(.nil)) {
         //    var result = self.allocator.create(Node) catch unreachable;
         //    result.* =  Node { .literal = self.pop().?};

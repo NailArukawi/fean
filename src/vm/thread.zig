@@ -118,6 +118,10 @@ pub const Thread = struct {
             switch (opcode.op) {
                 .no_op => continue,
                 .ret => return,
+                // todo
+                .dive => continue,
+                // todo
+                .ascend => continue,
                 .call_extern => {
                     const a = opcode.a();
                     const b = opcode.b();
@@ -156,6 +160,14 @@ pub const Thread = struct {
                 //},
 
                 // Memory
+                .load_true => {
+                    const dest = opcode.a();
+                    self.register[dest] = Item.from(bool, true);
+                },
+                .load_false => {
+                    const dest = opcode.a();
+                    self.register[dest] = Item.from(bool, false);
+                },
                 .load_literal => {
                     const a = opcode.a();
                     const y = opcode.y();
@@ -442,6 +454,14 @@ pub const Thread = struct {
                     const c = self.register[opcode.c()].f32;
                     self.register[opcode.a()] = Item.from(bool, b < c or b == c);
                 },
+                .not => {
+                    const dest = opcode.a();
+                    const source = opcode.b();
+
+                    const inverse = !self.register[source].bool;
+
+                    self.register[dest] = Item.from(bool, inverse);
+                },
                 .if_jmp => {
                     const a = self.register[opcode.a()].bool;
                     const offset: i22 = @bitCast(i22, opcode.y());
@@ -460,7 +480,10 @@ pub const Thread = struct {
                 },
 
                 .extended => return,
-                else => unreachable,
+                else => {
+                    std.debug.print("[THREAD]: ({s}) not implimented.\n", .{@tagName(opcode.op)});
+                    unreachable;
+                },
             }
         }
     }

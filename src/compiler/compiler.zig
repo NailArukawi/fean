@@ -27,6 +27,7 @@ pub const AddressKind = enum(u8) {
     upvalue,
     global,
     temporary,
+    pair,
 };
 
 pub const Address = struct {
@@ -68,6 +69,12 @@ pub const Address = struct {
         };
     }
 
+    pub inline fn new_pair(id: u56) @This() {
+        return @This(){
+            .inner = @intCast(usize, id) | (@intCast(usize, @enumToInt(AddressKind.pair)) << 56),
+        };
+    }
+
     pub inline fn literal(self: @This()) u56 {
         return @truncate(u56, self.inner);
     }
@@ -82,6 +89,10 @@ pub const Address = struct {
 
     pub inline fn register(self: @This()) u10 {
         return @truncate(u10, self.inner);
+    }
+
+    pub inline fn pair(self: @This()) u56 {
+        return @truncate(u56, self.inner);
     }
 
     pub inline fn kind(self: @This()) AddressKind {
@@ -107,6 +118,10 @@ pub const Address = struct {
                 const reg = self.register();
                 return std.fmt.bufPrint(buffer, "tmp[{d:4}]", .{reg});
             },
+            .pair => {
+                const pair_value = self.literal();
+                return std.fmt.bufPrint(buffer, "pair[{}]", .{pair_value});
+            },
         }
     }
 };
@@ -131,8 +146,12 @@ pub const Instr = union(enum) {
     invoke,
     invoke_extern,
     make_closure,
+    dive,
+    ascend,
 
     // Memory
+    load_true: Address,
+    load_false: Address,
     load_literal: Load,
     load_literal_obj: Load,
     load_global: Load,
@@ -191,8 +210,46 @@ pub const Instr = union(enum) {
     mul_f32: Arithmetic,
     div_f32: Arithmetic,
 
+    // conditional
+    // Control flow (21)
+    less_than_u64: Arithmetic,
+    less_than_u32: Arithmetic,
+    less_than_u16: Arithmetic,
+    less_than_u8: Arithmetic,
+    less_than_i64: Arithmetic,
+    less_than_i32: Arithmetic,
+    less_than_i16: Arithmetic,
+    less_than_i8: Arithmetic,
+    less_than_f64: Arithmetic,
+    less_than_f32: Arithmetic,
+
+    less_equal_u64: Arithmetic,
+    less_equal_u32: Arithmetic,
+    less_equal_u16: Arithmetic,
+    less_equal_u8: Arithmetic,
+    less_equal_i64: Arithmetic,
+    less_equal_i32: Arithmetic,
+    less_equal_i16: Arithmetic,
+    less_equal_i8: Arithmetic,
+    less_equal_f64: Arithmetic,
+    less_equal_f32: Arithmetic,
+
+    equal_bit: Arithmetic,
+    equal_f64: Arithmetic,
+    equal_f32: Arithmetic,
+
+    not: struct {
+        source: Address,
+        dest: Address,
+    },
+    if_jmp: struct {
+        condition: Address,
+        offset: Address,
+    },
+
     // meta
     block: *IRBlock,
+    destination: Address,
 
     // extended
     extended,
@@ -206,8 +263,18 @@ pub const Instr = union(enum) {
             .invoke => unreachable,
             .invoke_extern => unreachable,
             .make_closure => unreachable,
+            .dive => return std.fmt.bufPrint(buffer, "dive", .{}),
+            .ascend => return std.fmt.bufPrint(buffer, "ascend", .{}),
 
             // Memory
+            .load_true => |lt| {
+                const result = lt.register();
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = true", .{ @tagName(self), result });
+            },
+            .load_false => |lf| {
+                const result = lf.register();
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = true", .{ @tagName(self), result });
+            },
             .load_literal_obj, .load_literal => |l| {
                 const result = l.result.register();
                 const lit_adress = l.a.literal();
@@ -242,6 +309,7 @@ pub const Instr = union(enum) {
             .add_u64, .sub_u64, .mul_u64, .div_u64, .add_u32, .sub_u32, .mul_u32, .div_u32, .add_u16, .sub_u16, .mul_u16, .div_u16, .add_u8, .sub_u8, .mul_u8, .div_u8, .add_i64, .sub_i64, .mul_i64, .div_i64, .add_i32, .sub_i32, .mul_i32, .div_i32, .add_i16, .sub_i16, .mul_i16, .div_i16, .add_i8, .sub_i8, .mul_i8, .div_i8, .add_f64, .sub_f64, .mul_f64, .div_f64, .add_f32, .sub_f32, .mul_f32, .div_f32 => |a| {
                 const nested_size: usize = 32;
                 var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
                 const result = try a.result.debug(&nested_buffer);
                 const adress_a_offset = result.len;
                 const adress_a = try a.a.debug(nested_buffer[adress_a_offset..nested_size]);
@@ -249,6 +317,62 @@ pub const Instr = union(enum) {
                 const adress_b = try a.b.debug(nested_buffer[adress_b_offset..nested_size]);
 
                 return std.fmt.bufPrint(buffer, "{s}:\t{s} = {s}, {s}", .{ @tagName(self), result, adress_a, adress_b });
+            },
+
+            // Control flow (21)
+            .less_than_u64, .less_than_u32, .less_than_u16, .less_than_u8, .less_than_i64, .less_than_i32, .less_than_i16, .less_than_i8, .less_than_f64, .less_than_f32 => |lt| {
+                const nested_size: usize = 32;
+                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
+                const result = try lt.result.debug(&nested_buffer);
+                const adress_a_offset = result.len;
+                const adress_a = try lt.a.debug(nested_buffer[adress_a_offset..nested_size]);
+                const adress_b_offset = result.len + adress_a.len;
+                const adress_b = try lt.b.debug(nested_buffer[adress_b_offset..nested_size]);
+
+                return std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
+            },
+
+            .less_equal_u64, .less_equal_u32, .less_equal_u16, .less_equal_u8, .less_equal_i64, .less_equal_i32, .less_equal_i16, .less_equal_i8, .less_equal_f64, .less_equal_f32 => |le| {
+                const nested_size: usize = 32;
+                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
+                const result = try le.result.debug(&nested_buffer);
+                const adress_a_offset = result.len;
+                const adress_a = try le.a.debug(nested_buffer[adress_a_offset..nested_size]);
+                const adress_b_offset = result.len + adress_a.len;
+                const adress_b = try le.b.debug(nested_buffer[adress_b_offset..nested_size]);
+
+                return std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
+            },
+
+            .not => |n| {
+                const nested_size: usize = 32;
+                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
+                const dest = try n.dest.debug(&nested_buffer);
+                const source_offset = dest.len;
+                const source = try n.source.debug(nested_buffer[source_offset..nested_size]);
+                return std.fmt.bufPrint(buffer, "{s}:\t{s} = !{s}", .{ @tagName(self), dest, source });
+            },
+
+            .if_jmp => |ij| {
+                const nested_size: usize = 32;
+                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
+                const condition = try ij.condition.debug(&nested_buffer);
+                const offset_offset = condition.len;
+                const offset = try ij.offset.debug(nested_buffer[offset_offset..nested_size]);
+                return std.fmt.bufPrint(buffer, "{s}:\tif({s}) jump to {s}", .{ @tagName(self), condition, offset });
+            },
+
+            .destination => |a| {
+                const nested_size: usize = 32;
+                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
+                const dest = try a.debug(&nested_buffer);
+
+                return std.fmt.bufPrint(buffer, "{s}:\t{s}", .{ @tagName(self), dest });
             },
 
             else => {
@@ -446,9 +570,9 @@ pub const IR = struct {
                 .u8 => unreachable,
                 .i64 => {
                     const too_print = item.i64;
-                    std.debug.print("[{} : {}]: {}\n", .{
+                    std.debug.print("[{} : {s}]: {}\n", .{
                         i,
-                        lk,
+                        @tagName(lk),
                         too_print,
                     });
                 },
@@ -460,9 +584,9 @@ pub const IR = struct {
                 .bool => unreachable,
                 .Text => {
                     const too_print = item.resolve_object().text();
-                    std.debug.print("[{} : {}]: \"{s}\"\n", .{
+                    std.debug.print("[{} : {s}]: \"{s}\"\n", .{
                         i,
-                        lk,
+                        @tagName(lk),
                         too_print.as_slice(),
                     });
                 },
@@ -609,6 +733,7 @@ pub const Compiler = struct {
     literals_typing: *Stack(LitKind),
     objects: *Stack(*Object),
     depth: usize = 0,
+    dest: u56 = 0,
 
     pub fn compile(src: []const u8, config: *FeanConfig, meta: *CompilerMeta) !*IR {
         var ast = try Parser.parse(src, config);
@@ -625,6 +750,21 @@ pub const Compiler = struct {
         };
 
         return self.compile_to_ir(ast, meta);
+    }
+
+    inline fn dive(self: *@This(), scope: Scope) !void {
+        try scope.push_instr(.dive);
+        self.depth += 1;
+    }
+
+    inline fn ascend(self: *@This(), scope: Scope) !void {
+        try scope.push_instr(.ascend);
+        self.depth -= 1;
+    }
+
+    inline fn new_dest(self: *@This()) Address {
+        self.dest += 1;
+        return Address.new_pair(self.dest);
     }
 
     fn compile_to_ir(self: *@This(), ast: AST, meta: *CompilerMeta) !*IR {
@@ -653,11 +793,15 @@ pub const Compiler = struct {
                 // todo maybe allow scoped typing
                 var block = try Scope.create_block(self.allocator, scope, s.symbols);
 
+                // todo maybe block is small, no need to dive.
+                try self.dive(scope);
+
                 for (s.statments.?) |stmnt| {
                     _ = try self.generate(stmnt, block, null);
                 }
 
                 try scope.push_instr(Instr{ .block = block.block });
+                try self.ascend(scope);
             },
             .variable => {
                 if (scope.is_head()) {
@@ -684,6 +828,7 @@ pub const Compiler = struct {
                     },
                 }
             },
+            .conditional_if => try self.generate_conditional_if(node, scope),
             .binary_expression => {
                 // todo handle no registers!
                 const address = if (result != null) result.? else scope.get_temp().?;
@@ -817,7 +962,41 @@ pub const Compiler = struct {
         const symbol = scope.lookup_symbol(assignment.name).?;
 
         if (symbol.global) {
-            // todo assignment to global values
+            var obj = try self.copy_text(assignment.name);
+
+            // the stack adress for the lookup name of the global variable
+            const global_name = scope.get_temp().?;
+            defer scope.drop_temp();
+
+            const lit = try self.push_literal(.{
+                .object = obj,
+            }, .Text);
+
+            try scope.push_instr(.{ .load_literal = .{
+                .result = global_name,
+                .a = lit,
+            } });
+
+            // the value we want to put in the global variable
+            var tmp = scope.get_temp().?;
+            var tmp_moved = false;
+            var gen_result = try self.generate(assignment.value, scope, tmp);
+            defer {
+                if (!tmp_moved) {
+                    scope.drop_temp();
+                }
+            }
+
+            if (gen_result != null) {
+                tmp_moved = true;
+                scope.drop_temp();
+                tmp = gen_result.?;
+            }
+
+            try scope.push_instr(.{ .store_global = .{
+                .a = tmp,
+                .result = global_name,
+            } });
         } else {
             // todo upvalues
             if (self.depth != symbol.depth) {
@@ -827,6 +1006,44 @@ pub const Compiler = struct {
                 const result = Address.new_register(symbol.binding);
                 _ = try self.generate(assignment.value, scope, result);
             }
+        }
+    }
+
+    fn generate_conditional_if(self: *@This(), node: *Node, scope: Scope) !void {
+        var conditional = node.conditional_if;
+
+        var condition = scope.get_temp().?;
+        var condition_moved = false;
+        var gen_result = try self.generate(conditional.condition, scope, condition);
+        defer {
+            if (!condition_moved) {
+                scope.drop_temp();
+            }
+        }
+
+        if (gen_result != null) {
+            condition_moved = true;
+            scope.drop_temp();
+            condition = gen_result.?;
+        }
+
+        const if_condition = scope.get_temp().?;
+        defer scope.drop_temp();
+        try scope.push_instr(Instr{ .not = .{ .source = condition, .dest = if_condition } });
+
+        if (conditional.if_else == null) {
+            // single prong if
+            const end_dest = self.new_dest();
+            try scope.push_instr(Instr{ .if_jmp = .{
+                .condition = if_condition,
+                .offset = end_dest,
+            } });
+
+            _ = try self.generate(conditional.if_then, scope, null);
+
+            try scope.push_instr(Instr{ .destination = end_dest });
+        } else {
+            // multi prong if
         }
     }
 
@@ -962,6 +1179,17 @@ pub const Compiler = struct {
                     } else {
                         return Address.new_register(symbol.?.binding);
                     }
+                }
+            },
+            .keyword => |kw| {
+                switch (kw) {
+                    .True => {
+                        try scope.push_instr(.{ .load_true = result });
+                    },
+                    .False => {
+                        try scope.push_instr(.{ .load_false = result });
+                    },
+                    else => unreachable,
                 }
             },
             else => unreachable,

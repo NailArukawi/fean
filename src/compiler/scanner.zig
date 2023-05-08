@@ -36,9 +36,13 @@ pub const KWPair = struct {
 const KW_MAP = [_]KWPair{
     KWPair{ .hash = kw_hash("trait"), .keyword = Keyword.Trait },
     KWPair{ .hash = kw_hash("impl"), .keyword = Keyword.Impl },
+    KWPair{ .hash = kw_hash("if"), .keyword = Keyword.If },
+    KWPair{ .hash = kw_hash("else"), .keyword = Keyword.Else },
     KWPair{ .hash = kw_hash("for"), .keyword = Keyword.For },
     KWPair{ .hash = kw_hash("pub"), .keyword = Keyword.Pub },
     KWPair{ .hash = kw_hash("return"), .keyword = Keyword.Return },
+    KWPair{ .hash = kw_hash("true"), .keyword = Keyword.True },
+    KWPair{ .hash = kw_hash("false"), .keyword = Keyword.False },
 };
 
 fn is_keyword(token: *Token) void {
