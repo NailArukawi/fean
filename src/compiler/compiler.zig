@@ -45,9 +45,9 @@ pub const Address = struct {
         };
     }
 
-    pub inline fn new_upvalue(symbol: Symbol) @This() {
+    pub inline fn new_upvalue(address: u56) @This() {
         return @This(){
-            .inner = @ptrToInt(symbol) | (@intCast(usize, @enumToInt(AddressKind.upvalue)) << 56),
+            .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.upvalue)) << 56),
         };
     }
 
@@ -73,6 +73,10 @@ pub const Address = struct {
         return @This(){
             .inner = @intCast(usize, id) | (@intCast(usize, @enumToInt(AddressKind.pair)) << 56),
         };
+    }
+
+    pub inline fn upvalue(self: @This()) u56 {
+        return @truncate(u56, self.inner);
     }
 
     pub inline fn literal(self: @This()) u56 {
@@ -158,12 +162,7 @@ pub const Instr = union(enum) {
     load_global_obj: Load,
     store_global: Load,
     get_upvalue: Load,
-    get_upvalue_obj: Load,
     set_upvalue: Load,
-    open_upvalue: struct {
-        a: Address,
-    },
-    close_upvalue,
 
     // Arithmetic
     add_u64: Arithmetic,
@@ -293,10 +292,16 @@ pub const Instr = union(enum) {
                 const value = g.a.literal();
                 return try std.fmt.bufPrint(buffer, "{s}:\tGlobal(\"reg[{}]\") = reg[{}]", .{ @tagName(self), global_name, value });
             },
-            .get_upvalue_obj => unreachable,
-            .set_upvalue => unreachable,
-            .open_upvalue => unreachable,
-            .close_upvalue => unreachable,
+            .get_upvalue => |gu| {
+                const result = gu.result.register();
+                const real = gu.a.literal();
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = stack[{}]", .{ @tagName(self), result, real });
+            },
+            .set_upvalue => |gu| {
+                const real = gu.result.register();
+                const source = gu.a.literal();
+                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}] = reg[{}]", .{ @tagName(self), real, source });
+            },
 
             // meta
             .block => |b| {
@@ -681,13 +686,7 @@ pub const Scope = union(enum) {
         switch (self) {
             .head => |head| return head.lookup_global(identifier),
             .block => |block| {
-                var cursor = block.parent;
-
-                while (!cursor.is_head()) {
-                    cursor = block.parent;
-                }
-
-                return cursor.head.lookup_global(identifier);
+                return block.parent.lookup_global(identifier);
             },
         }
     }
@@ -1267,7 +1266,15 @@ pub const Compiler = struct {
                     // todo upvalues
                     if (self.depth != symbol.?.depth) {
                         // we have an upvalue
-                        unreachable;
+                        const zamn = symbol.?;
+
+                        const real = @intCast(u56, (zamn.depth * 1024) + zamn.binding);
+                        const real_address = Address.new_upvalue(real);
+
+                        try scope.push_instr(.{ .get_upvalue = .{
+                            .result = result,
+                            .a = real_address,
+                        } });
                     } else {
                         return Address.new_register(symbol.?.binding);
                     }

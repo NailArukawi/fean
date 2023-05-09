@@ -36,6 +36,7 @@ pub const Thread = struct {
 
     register: [*]Item,
     stack: Stack(Item),
+    depth: usize,
     obj_map: DynamicBitSet,
     stack_depth: usize,
 
@@ -56,6 +57,7 @@ pub const Thread = struct {
 
         result.register = stack.inner[0..REGISTER_COUNT];
         result.stack = stack;
+        result.depth = 0;
         result.obj_map = try DynamicBitSet.create(allocator, result.stack.capacity);
         result.stack_depth = 0;
 
@@ -112,6 +114,16 @@ pub const Thread = struct {
         _ = try self.globals.set(name_text, value);
     }
 
+    pub inline fn reg_to_top(self: *@This()) !void {
+        const depth_offset = self.depth * 1024;
+        if (self.stack.capacity < self.depth * 1024) {
+            const new_size = self.depth * 1024;
+            try self.stack.ensure_capacity(new_size);
+        }
+
+        self.register = self.stack.inner[depth_offset..(depth_offset + 1024)].ptr;
+    }
+
     pub inline fn execute(self: *@This()) void {
         while (true) {
             const opcode: Opcode = self.chunk.next_op(&self.ip);
@@ -119,9 +131,15 @@ pub const Thread = struct {
                 .no_op => continue,
                 .ret => return,
                 // todo
-                .dive => continue,
+                .dive => {
+                    self.depth += 1;
+                    self.reg_to_top() catch unreachable;
+                },
                 // todo
-                .ascend => continue,
+                .ascend => {
+                    self.depth -= 1;
+                    self.reg_to_top() catch unreachable;
+                },
                 .call_extern => {
                     const a = opcode.a();
                     const b = opcode.b();
@@ -186,6 +204,18 @@ pub const Thread = struct {
                     const value = self.register[value_register];
                     const name = self.register[name_register];
                     self.set_global(name, value) catch unreachable;
+                },
+                // todo copy obj bit
+                .get_upvalue => {
+                    const a = opcode.a();
+                    const y = opcode.y();
+                    self.register[a] = self.stack.inner[y];
+                },
+                // todo copy obj bit
+                .set_upvalue => {
+                    const a = opcode.a();
+                    const y = opcode.y();
+                    self.stack.inner[y] = self.register[a];
                 },
 
                 // Arithmetic

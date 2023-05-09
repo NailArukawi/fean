@@ -45,15 +45,15 @@ pub const Chunk = struct {
                 .call_extern => unreachable,
                 .invoke => unreachable,
                 .invoke_extern => unreachable,
-                .dive => std.debug.print("[{}]:\t[{s}]+n", .{ i, @tagName(op.op) }),
+                .dive => std.debug.print("[{}]:\t[{s}]\n", .{ i, @tagName(op.op) }),
                 .ascend => std.debug.print("[{}]:\t[{s}]\n", .{ i, @tagName(op.op) }),
 
                 // Memory (10)
                 .load_true, .load_false, .load_literal, .load_literal_obj => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = const[{}])\n", .{ i, @tagName(op.op), op.a(), op.y() }),
                 .load_global, .load_global_obj => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = global[{}])\n", .{ i, @tagName(op.op), op.a(), op.b() }),
                 .store_global => std.debug.print("[{}]:\t[{s}]\t(global[{}] = reg[{}])\n", .{ i, @tagName(op.op), op.a(), op.b() }),
-                .get_upvalue => unreachable,
-                .get_upvalue_obj => unreachable,
+                .get_upvalue => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = stack[{}])\n", .{ i, @tagName(op.op), op.a(), op.y() }),
+                .set_upvalue => unreachable,
                 .copy => unreachable,
 
                 // Arithmetic (40)

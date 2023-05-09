@@ -17,10 +17,20 @@ const Scope = struct {
     kinds: ?*KindTable,
 
     pub fn lookup_symbol(self: *@This(), name: []const u8) ?Symbol {
-        if (self.symbols == null) {
+        if (self.symbols == null and self.parent == null) {
             return null;
+        } else if (self.symbols == null) {
+            return self.parent.?.lookup_symbol(name);
         }
-        return self.symbols.?.lookup(name);
+
+        const result = self.symbols.?.lookup(name);
+        if (result == null and self.parent == null) {
+            return null;
+        } else if (result == null) {
+            return self.parent.?.lookup_symbol(name);
+        }
+
+        return result;
     }
 
     pub fn lookup_kind(self: *@This(), name: []const u8) ?Kind {

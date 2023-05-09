@@ -34,6 +34,8 @@ pub const KWPair = struct {
     keyword: Keyword,
 };
 const KW_MAP = [_]KWPair{
+    KWPair{ .hash = kw_hash("and"), .keyword = Keyword.And },
+    KWPair{ .hash = kw_hash("or"), .keyword = Keyword.Or },
     KWPair{ .hash = kw_hash("trait"), .keyword = Keyword.Trait },
     KWPair{ .hash = kw_hash("impl"), .keyword = Keyword.Impl },
     KWPair{ .hash = kw_hash("if"), .keyword = Keyword.If },

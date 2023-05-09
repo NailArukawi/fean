@@ -131,6 +131,8 @@ pub const Symbol = enum {
 
 pub const Keyword = enum {
     no_keyword,
+    And,
+    Or,
     Struct,
     Trait,
     Impl,
@@ -186,6 +188,8 @@ pub const TokenKind = enum {
 
     // keywords
     no_keyword,
+    And,
+    Or,
     Struct,
     Trait,
     Impl,
@@ -237,6 +241,8 @@ pub const TokenKind = enum {
             .keyword => |k| {
                 switch (k) {
                     .no_keyword => return @This().no_keyword,
+                    .And => return @This().And,
+                    .Or => return @This().Or,
                     .Struct => return @This().Struct,
                     .Trait => return @This().Trait,
                     .Impl => return @This().Impl,
@@ -291,6 +297,8 @@ pub const TokenKind = enum {
             .constant_asignment => return TokenData.new_symbol(.constant_asignment, Span.default()),
 
             // keywords
+            .And => return TokenData.new_keyword(.And, Span.default()),
+            .Or => return TokenData.new_keyword(.Or, Span.default()),
             .Struct => return TokenData.new_keyword(.Struct, Span.default()),
             .Trait => return TokenData.new_keyword(.Trait, Span.default()),
             .Impl => return TokenData.new_keyword(.Impl, Span.default()),

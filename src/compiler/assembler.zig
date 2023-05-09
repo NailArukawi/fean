@@ -189,11 +189,30 @@ pub const Assembler = struct {
 
                 try self.push_op(opcode);
             },
-            .get_upvalue => unreachable,
-            .get_upvalue_obj => unreachable,
-            .set_upvalue => unreachable,
-            .open_upvalue => unreachable,
-            .close_upvalue => unreachable,
+            .get_upvalue => |load| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_upvalue;
+
+                const result = load.result.register();
+                opcode.set_a(result);
+
+                const real = load.a.upvalue();
+                opcode.set_y(@intCast(u22, real));
+
+                try self.push_op(opcode);
+            },
+            .set_upvalue => |load| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_upvalue;
+
+                const storee = load.result.register();
+                opcode.set_a(storee);
+
+                const real = load.a.upvalue();
+                opcode.set_y(@intCast(u22, real));
+
+                try self.push_op(opcode);
+            },
 
             // Arithmetic
             .add_u64 => |arithmetic| {

@@ -21,7 +21,7 @@ pub const Op = enum(u8) {
     load_global_obj,
     store_global,
     get_upvalue,
-    get_upvalue_obj,
+    set_upvalue,
     copy,
 
     // Arithmetic (40)
