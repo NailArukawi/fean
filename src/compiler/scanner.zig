@@ -43,6 +43,7 @@ const KW_MAP = [_]KWPair{
     KWPair{ .hash = kw_hash("return"), .keyword = Keyword.Return },
     KWPair{ .hash = kw_hash("true"), .keyword = Keyword.True },
     KWPair{ .hash = kw_hash("false"), .keyword = Keyword.False },
+    KWPair{ .hash = kw_hash("while"), .keyword = Keyword.While },
 };
 
 fn is_keyword(token: *Token) void {

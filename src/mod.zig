@@ -20,6 +20,7 @@ pub const Fean = struct {
 
         // transform the semi-linear instructions into somthing the thread can execute
         var main = try compiler.Assembler.assemble(ir, config.allocator, compiler_meta);
+        main.chunk.debug();
 
         var fean = @This(){
             .config = config,

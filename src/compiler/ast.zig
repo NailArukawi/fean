@@ -144,6 +144,10 @@ pub const Node = union(enum) {
         if_then: *Node,
         if_else: ?*Node,
     },
+    conditional_while: struct {
+        condition: *Node,
+        body: *Node,
+    },
     binary_expression: struct {
         kind: ?SymbolKind,
         lhs: *Node,

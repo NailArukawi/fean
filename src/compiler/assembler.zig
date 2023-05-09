@@ -269,6 +269,21 @@ pub const Assembler = struct {
             .div_f32 => unreachable,
 
             // conditional
+            .less_than_i64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.less_than_i64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
             .not => |n| {
                 var opcode = Opcode.new();
                 opcode.op = Op.not;
@@ -296,9 +311,18 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.jmp;
 
-                try self.push_op(opcode);
+                var jump = self.jumps.get(j.offset);
+                if (jump != null) {
+                    var pos: isize = @intCast(isize, jump.?.pos);
+                    var offset = @intCast(i32, pos - @intCast(isize, i));
+                    opcode.set_x(@bitCast(u32, offset));
 
-                try self.jumps.push(j.offset, self.op_count - 1);
+                    try self.push_op(opcode);
+                } else {
+                    try self.push_op(opcode);
+
+                    try self.jumps.push(j.offset, self.op_count - 1);
+                }
             },
 
             // meta
@@ -312,18 +336,22 @@ pub const Assembler = struct {
                 lines_written = j;
             },
             .destination => |dest| {
-                var jump = self.jumps.get(dest);
-                var opcode = &self.result.chunk.code.items[jump.?.pos];
-
-                if (opcode.op == .if_jmp) {
-                    var offset = @intCast(i22, i - jump.?.pos);
-                    opcode.set_y(@bitCast(u22, offset));
-                } else if (opcode.op == .jmp) {
-                    var offset = @intCast(i32, i - jump.?.pos);
-                    opcode.set_x(@bitCast(u32, offset));
-                }
-
                 lines_written = 0;
+
+                var jump = self.jumps.get(dest);
+                if (jump == null) {
+                    try self.jumps.push(dest, self.op_count);
+                } else {
+                    var opcode = &self.result.chunk.code.items[jump.?.pos];
+
+                    if (opcode.op == .if_jmp) {
+                        var offset = @intCast(i22, i - jump.?.pos);
+                        opcode.set_y(@bitCast(u22, offset));
+                    } else if (opcode.op == .jmp) {
+                        var offset = @intCast(i32, i - jump.?.pos);
+                        opcode.set_x(@bitCast(u32, offset));
+                    }
+                }
             },
 
             // extended

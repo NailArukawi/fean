@@ -110,6 +110,11 @@ pub const Resolver = struct {
                 }
                 return null;
             },
+            .conditional_while => |cw| {
+                _ = try self.kind_visit(cw.condition, scope);
+                _ = try self.kind_visit(cw.body, scope);
+                return null;
+            },
             .binary_expression => |b| {
                 const l_kind = try self.kind_visit(b.lhs, scope);
                 const r_kind = try self.kind_visit(b.rhs, scope);
@@ -141,7 +146,6 @@ pub const Resolver = struct {
                     .identifier => |name| {
                         // todo make it smarter about typing
                         const symbol = scope.lookup_symbol(name) orelse return null;
-                        std.debug.print("kinded: {s}, with kind: {?}\n", .{ symbol.name, symbol.kind });
 
                         return symbol.kind;
                     },
@@ -228,6 +232,10 @@ pub const Resolver = struct {
                 if (cif.if_else != null) {
                     try self.symbol_visit(cif.if_else.?, scope);
                 }
+            },
+            .conditional_while => |cw| {
+                try self.symbol_visit(cw.condition, scope);
+                try self.symbol_visit(cw.body, scope);
             },
             .binary_expression => |b| {
                 try self.symbol_visit(b.lhs, scope);

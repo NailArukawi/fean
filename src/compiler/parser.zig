@@ -166,6 +166,10 @@ pub const Parser = struct {
         else if (self.of_kind(.If)) {
             return self.statment_if(scope);
         }
+        // we have an while
+        else if (self.of_kind(.While)) {
+            return self.statment_while(scope);
+        }
         // a block of code
         else if (self.of_kind(.curley_left)) {
             return self.statment_block(scope);
@@ -188,6 +192,20 @@ pub const Parser = struct {
             .condition = condition,
             .if_then = if_then,
             .if_else = if_else,
+        } };
+
+        return conditional;
+    }
+
+    fn statment_while(self: *@This(), scope: *Node) *Node {
+        var condition = self.expression(scope);
+        var body = self.statment(scope);
+
+        var conditional = self.allocator.create(Node) catch unreachable;
+
+        conditional.* = Node{ .conditional_while = .{
+            .condition = condition,
+            .body = body,
         } };
 
         return conditional;

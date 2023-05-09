@@ -141,6 +141,7 @@ pub const Keyword = enum {
     Return,
     True,
     False,
+    While,
 };
 
 pub const TokenKind = enum {
@@ -195,6 +196,7 @@ pub const TokenKind = enum {
     Return,
     True,
     False,
+    While,
 
     pub fn translate_from(other: TokenData) @This() {
         switch (other) {
@@ -245,6 +247,7 @@ pub const TokenKind = enum {
                     .Return => return @This().Return,
                     .True => return @This().True,
                     .False => return @This().False,
+                    .While => return @This().While,
                 }
             },
         }
@@ -298,6 +301,7 @@ pub const TokenKind = enum {
             .Return => return TokenData.new_keyword(.Return, Span.default()),
             .True => return TokenData.new_keyword(.True, Span.default()),
             .False => return TokenData.new_keyword(.False, Span.default()),
+            .While => return TokenData.new_keyword(.While, Span.default()),
         }
     }
 };

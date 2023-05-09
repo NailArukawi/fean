@@ -840,6 +840,7 @@ pub const Compiler = struct {
                 }
             },
             .conditional_if => try self.generate_conditional_if(node, scope),
+            .conditional_while => try self.generate_conditional_while(node, scope),
             .binary_expression => {
                 // todo handle no registers!
                 const address = if (result != null) result.? else scope.get_temp().?;
@@ -1076,6 +1077,47 @@ pub const Compiler = struct {
         }
     }
 
+    fn generate_conditional_while(self: *@This(), node: *Node, scope: Scope) !void {
+        var conditional = node.conditional_while;
+        const loop_dest = self.new_dest();
+
+        try scope.push_instr(Instr{ .destination = loop_dest });
+
+        var condition = scope.get_temp().?;
+        var condition_moved = false;
+        var gen_result = try self.generate(conditional.condition, scope, condition);
+        defer {
+            if (!condition_moved) {
+                scope.drop_temp();
+            }
+        }
+
+        if (gen_result != null) {
+            condition_moved = true;
+            scope.drop_temp();
+            condition = gen_result.?;
+        }
+
+        const if_condition = scope.get_temp().?;
+        defer scope.drop_temp();
+        try scope.push_instr(Instr{ .not = .{ .source = condition, .dest = if_condition } });
+
+        const end_dest = self.new_dest();
+
+        try scope.push_instr(Instr{ .if_jmp = .{
+            .condition = if_condition,
+            .offset = end_dest,
+        } });
+
+        _ = try self.generate(conditional.body, scope, null);
+
+        try scope.push_instr(Instr{ .jmp = .{
+            .offset = loop_dest,
+        } });
+
+        try scope.push_instr(Instr{ .destination = end_dest });
+    }
+
     fn generate_binary_expression(self: *@This(), node: *Node, scope: Scope, result: Address) !void {
         const exp = node.binary_expression;
 
@@ -1139,6 +1181,27 @@ pub const Compiler = struct {
             },
             .star => {
                 unreachable;
+            },
+            .less, .greater => {
+                if (exp.op.data.symbol == .greater) {
+                    const tmp = lhs;
+                    lhs = rhs;
+                    rhs = tmp;
+                }
+
+                if (mem.eql(u8, kind, "u64")) {
+                    try scope.push_instr(Instr{ .less_than_u64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else if (mem.eql(u8, kind, "i64")) {
+                    try scope.push_instr(Instr{ .less_than_i64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                }
             },
             else => unreachable,
         }
