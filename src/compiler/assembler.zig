@@ -303,9 +303,18 @@ pub const Assembler = struct {
                 const result = ij.condition.register();
                 opcode.set_a(result);
 
-                try self.push_op(opcode);
+                var jump = self.jumps.get(ij.offset);
+                if (jump != null) {
+                    var pos: isize = @intCast(isize, jump.?.pos);
+                    var offset = @intCast(i22, pos - @intCast(isize, i));
+                    opcode.set_y(@bitCast(u22, offset));
 
-                try self.jumps.push(ij.offset, self.op_count - 1);
+                    try self.push_op(opcode);
+                } else {
+                    try self.push_op(opcode);
+
+                    try self.jumps.push(ij.offset, self.op_count - 1);
+                }
             },
             .jmp => |j| {
                 var opcode = Opcode.new();
