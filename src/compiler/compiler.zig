@@ -246,6 +246,9 @@ pub const Instr = union(enum) {
         condition: Address,
         offset: Address,
     },
+    jmp: struct {
+        offset: Address,
+    },
 
     // meta
     block: *IRBlock,
@@ -364,6 +367,14 @@ pub const Instr = union(enum) {
                 const offset_offset = condition.len;
                 const offset = try ij.offset.debug(nested_buffer[offset_offset..nested_size]);
                 return std.fmt.bufPrint(buffer, "{s}:\tif({s}) jump to {s}", .{ @tagName(self), condition, offset });
+            },
+
+            .jmp => |j| {
+                const nested_size: usize = 32;
+                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
+                const offset = try j.offset.debug(&nested_buffer);
+                return std.fmt.bufPrint(buffer, "{s}:\tjump to {s}", .{ @tagName(self), offset });
             },
 
             .destination => |a| {
@@ -1044,6 +1055,24 @@ pub const Compiler = struct {
             try scope.push_instr(Instr{ .destination = end_dest });
         } else {
             // multi prong if
+            const end_dest = self.new_dest();
+            const else_dest = self.new_dest();
+            try scope.push_instr(Instr{ .if_jmp = .{
+                .condition = if_condition,
+                .offset = else_dest,
+            } });
+
+            _ = try self.generate(conditional.if_then, scope, null);
+
+            try scope.push_instr(Instr{ .jmp = .{
+                .offset = end_dest,
+            } });
+
+            try scope.push_instr(Instr{ .destination = else_dest });
+
+            _ = try self.generate(conditional.if_else.?, scope, null);
+
+            try scope.push_instr(Instr{ .destination = end_dest });
         }
     }
 

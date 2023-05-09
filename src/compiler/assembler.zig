@@ -65,8 +65,10 @@ pub const JumpRecordStack = struct {
         }
         if (self.inner.used == 1) {
             self.inner.used = 0;
+        } else if (found.? == (self.inner.used - 1)) {
+            self.inner.used -= 1;
         } else {
-            for (found.?..mem.len) |i| {
+            for (found.?..(mem.len - 1)) |i| {
                 mem[i] = mem[i + 1];
             }
 
@@ -290,6 +292,14 @@ pub const Assembler = struct {
 
                 try self.jumps.push(ij.offset, self.op_count - 1);
             },
+            .jmp => |j| {
+                var opcode = Opcode.new();
+                opcode.op = Op.jmp;
+
+                try self.push_op(opcode);
+
+                try self.jumps.push(j.offset, self.op_count - 1);
+            },
 
             // meta
             .block => |blck| {
@@ -305,8 +315,15 @@ pub const Assembler = struct {
                 var jump = self.jumps.get(dest);
                 var opcode = &self.result.chunk.code.items[jump.?.pos];
 
-                var offset = @intCast(i22, i - jump.?.pos);
-                opcode.set_y(@bitCast(u22, offset));
+                if (opcode.op == .if_jmp) {
+                    var offset = @intCast(i22, i - jump.?.pos);
+                    opcode.set_y(@bitCast(u22, offset));
+                } else if (opcode.op == .jmp) {
+                    var offset = @intCast(i32, i - jump.?.pos);
+                    opcode.set_x(@bitCast(u32, offset));
+                }
+
+                lines_written = 0;
             },
 
             // extended

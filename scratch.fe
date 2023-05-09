@@ -1,8 +1,7 @@
-c : i64 = 69;
+c : i64 = 0;
 
-if (false) {
-    c = 420;
+if (true) {
+    c = c + 420;
 }
-
 
 return c;

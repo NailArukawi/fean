@@ -90,8 +90,7 @@ pub const Resolver = struct {
                 return null;
             },
             .variable => |v| {
-                _ = v;
-                return null;
+                return (scope.lookup_symbol(v.name) orelse return null).kind;
             },
             .constant => |c| {
                 _ = c;
@@ -104,7 +103,11 @@ pub const Resolver = struct {
                 return self.kind_visit(v.value, scope);
             },
             .conditional_if => |cif| {
-                _ = cif;
+                _ = try self.kind_visit(cif.condition, scope);
+                _ = try self.kind_visit(cif.if_then, scope);
+                if (cif.if_else != null) {
+                    _ = try self.kind_visit(cif.if_else.?, scope);
+                }
                 return null;
             },
             .binary_expression => |b| {
@@ -138,10 +141,23 @@ pub const Resolver = struct {
                     .identifier => |name| {
                         // todo make it smarter about typing
                         const symbol = scope.lookup_symbol(name) orelse return null;
+                        std.debug.print("kinded: {s}, with kind: {?}\n", .{ symbol.name, symbol.kind });
 
                         return symbol.kind;
                     },
-                    else => unreachable,
+                    .keyword => |kw| {
+                        switch (kw) {
+                            .True => return SymbolKind{ .resolved = scope.lookup_kind("bool").? },
+                            else => {
+                                std.debug.print("[resolver.kind.literal.keyword]: ({s}) not implimented.\n", .{@tagName(l.data)});
+                                unreachable;
+                            },
+                        }
+                    },
+                    else => {
+                        std.debug.print("[resolver.kind.literal]: ({s}) not implimented.\n", .{@tagName(l.data)});
+                        unreachable;
+                    },
                 }
             },
         }
@@ -207,6 +223,7 @@ pub const Resolver = struct {
                 try self.symbol_visit(v.value, scope);
             },
             .conditional_if => |cif| {
+                try self.symbol_visit(cif.condition, scope);
                 try self.symbol_visit(cif.if_then, scope);
                 if (cif.if_else != null) {
                     try self.symbol_visit(cif.if_else.?, scope);
