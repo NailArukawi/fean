@@ -287,7 +287,11 @@ pub const Scanner = struct {
             while (!self.is_eos()) {
                 const n = self.peek();
 
-                if (is_numeric(n)) {
+                if (is_numeric(n) or n == '_') {
+                    if (n == '_') {
+                        _ = self.pop();
+                        continue;
+                    }
                     whole *= 10;
                     whole += ascii_to_int(self.pop());
                 } else if (n == '.') {
@@ -298,7 +302,11 @@ pub const Scanner = struct {
                     while (!self.is_eos()) {
                         const d = self.peek();
 
-                        if (is_numeric(d)) {
+                        if (is_numeric(d) or n == '_') {
+                            if (n == '_') {
+                                _ = self.pop();
+                                continue;
+                            }
                             const div = std.math.pow(f64, 10, depth);
                             part += @intToFloat(f64, ascii_to_int(self.pop())) / div;
                             depth += 1;
