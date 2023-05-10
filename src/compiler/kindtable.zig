@@ -1,6 +1,7 @@
 // a rather direct implementation of http://silcnitc.github.io/Data_Structures.html
 const std = @import("std");
 
+const vm = @import("../vm/mod.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Kind = *KindTable;
@@ -43,9 +44,8 @@ pub const KindTable = struct {
         _ = try self.install("dict", null, @sizeOf(Dict), allocator);
         _ = try self.install("text", null, @sizeOf(Text), allocator);
         _ = try self.install("bool", null, @sizeOf(bool), allocator);
-        //_ = try self.install("table", null, allocator);
-        //_ = try self.install("nil", null, allocator);
-        //_ = try self.install("void", null, allocator);
+        _ = try self.install("Fn", null, @sizeOf(vm.Function), allocator);
+        _ = try self.install("void", null, @sizeOf(void), allocator);
 
         return self;
     }

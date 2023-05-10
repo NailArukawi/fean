@@ -110,7 +110,26 @@ pub const Resolver = struct {
                 return self.kind_visit(a.value, scope);
             },
             .statment => |v| {
-                return self.kind_visit(v.value, scope);
+                if (v.value != null) {
+                    return self.kind_visit(v.value.?, scope);
+                }
+
+                return null;
+            },
+            .function => {
+                var function = &node.function;
+                if (!function.is_extern) {
+                    return self.kind_visit(function.body.body, scope);
+                }
+
+                if (function.result != null and function.result.? == .unresolved) {
+                    const found = scope.kinds.?.lookup(function.result.?.unresolved);
+                    if (found != null) {
+                        function.result.?.resolved = found.?;
+                    }
+                }
+
+                return SymbolKind{ .resolved = scope.kinds.?.lookup("fn").? };
             },
             .conditional_if => |cif| {
                 _ = try self.kind_visit(cif.condition, scope);
@@ -142,6 +161,10 @@ pub const Resolver = struct {
                 const kind = try self.kind_visit(u.value, scope);
                 return kind;
             },
+            .call => {
+                // todo function return type lookup system
+                return null;
+            },
             .literal => |l| {
                 switch (l.data) {
                     .integer => {
@@ -162,8 +185,9 @@ pub const Resolver = struct {
                     .keyword => |kw| {
                         switch (kw) {
                             .True => return SymbolKind{ .resolved = scope.lookup_kind("bool").? },
+                            .False => return SymbolKind{ .resolved = scope.lookup_kind("bool").? },
                             else => {
-                                std.debug.print("[resolver.kind.literal.keyword]: ({s}) not implimented.\n", .{@tagName(l.data)});
+                                std.debug.print("[resolver.kind.literal.keyword]: ({s}) not implimented.\n", .{@tagName(l.data.keyword)});
                                 unreachable;
                             },
                         }
@@ -222,7 +246,7 @@ pub const Resolver = struct {
                             @panic("Kind not found!");
                         }
 
-                        node.*.variable.kind = SymbolKind{ .resolved = kind.? };
+                        node.*.constant.kind = SymbolKind{ .resolved = kind.? };
 
                         // todo better
                         var symbol = node.*.constant.symbol orelse scope.lookup_symbol(name).?;
@@ -234,7 +258,14 @@ pub const Resolver = struct {
                 try self.symbol_visit(a.value, scope);
             },
             .statment => |v| {
-                try self.symbol_visit(v.value, scope);
+                if (v.value != null) {
+                    try self.symbol_visit(v.value.?, scope);
+                }
+            },
+            .function => |func| {
+                if (!func.is_extern) {
+                    try self.symbol_visit(func.body.body, scope);
+                }
             },
             .conditional_if => |cif| {
                 try self.symbol_visit(cif.condition, scope);
@@ -253,6 +284,10 @@ pub const Resolver = struct {
             },
             .unary_expression => |u| {
                 try self.symbol_visit(u.value, scope);
+            },
+            .call => {
+                // todo
+                return;
             },
             .literal => {
                 return;

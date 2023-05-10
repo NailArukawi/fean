@@ -100,6 +100,8 @@ pub const Symbol = enum {
     no_symbol,
     EOS,
 
+    right_arrow,
+
     paren_left,
     paren_right,
     brace_left,
@@ -144,6 +146,8 @@ pub const Keyword = enum {
     True,
     False,
     While,
+    Fn,
+    Extern,
 };
 
 pub const TokenKind = enum {
@@ -157,6 +161,8 @@ pub const TokenKind = enum {
     // symbols
     no_symbol,
     EOS,
+
+    right_arrow,
 
     paren_left,
     paren_right,
@@ -201,6 +207,8 @@ pub const TokenKind = enum {
     True,
     False,
     While,
+    Fn,
+    Extern,
 
     pub fn translate_from(other: TokenData) @This() {
         switch (other) {
@@ -212,6 +220,7 @@ pub const TokenKind = enum {
                 switch (s) {
                     .no_symbol => return @This().no_symbol,
                     .EOS => return @This().EOS,
+                    .right_arrow => return @This().right_arrow,
                     .paren_left => return @This().paren_left,
                     .paren_right => return @This().paren_right,
                     .brace_left => return @This().brace_left,
@@ -254,6 +263,8 @@ pub const TokenKind = enum {
                     .True => return @This().True,
                     .False => return @This().False,
                     .While => return @This().While,
+                    .Fn => return @This().Fn,
+                    .Extern => return @This().Extern,
                 }
             },
         }
@@ -271,6 +282,7 @@ pub const TokenKind = enum {
             // symbols
             .no_symbol => return TokenData.new_symbol(.no_symbol, Span.default()),
             .EOS => return TokenData.new_symbol(.EOS, Span.default()),
+            .right_arrow => return TokenData.new_symbol(.right_arrow, Span.default()),
             .paren_left => return TokenData.new_symbol(.paren_left, Span.default()),
             .paren_right => return TokenData.new_symbol(.paren_right, Span.default()),
             .brace_left => return TokenData.new_symbol(.brace_left, Span.default()),
@@ -310,6 +322,8 @@ pub const TokenKind = enum {
             .True => return TokenData.new_keyword(.True, Span.default()),
             .False => return TokenData.new_keyword(.False, Span.default()),
             .While => return TokenData.new_keyword(.While, Span.default()),
+            .Fn => return TokenData.new_keyword(.Fn, Span.default()),
+            .Extern => return TokenData.new_keyword(.Extern, Span.default()),
         }
     }
 };

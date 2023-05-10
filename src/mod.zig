@@ -20,7 +20,7 @@ pub const Fean = struct {
 
         // transform the semi-linear instructions into somthing the thread can execute
         var main = try compiler.Assembler.assemble(ir, config.allocator, compiler_meta);
-        main.chunk.debug();
+        //main.chunk.debug();
 
         var fean = @This(){
             .config = config,
@@ -41,6 +41,8 @@ pub const FeanConfig = struct {
     file_debug: bool = false,
     file_lookup: ?*const fn (compiler.token.Span) FileLookup = null,
 
+    fn_lookup: ?*const fn (name: []const u8) ?*const fn (args: []vm.Item, result: ?*vm.Item) void,
+
     file_id_count: u32 = 1,
     compile_flags: FeanCompileFlags,
 
@@ -51,6 +53,8 @@ pub const FeanConfig = struct {
 
             .file_debug = false,
             .file_lookup = null,
+
+            .fn_lookup = null,
 
             .file_id_count = 1,
             .compile_flags = .{},

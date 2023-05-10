@@ -9,6 +9,7 @@ const Resolver = @import("resolver.zig").Resolver;
 const AST = @import("parser.zig").AST;
 const Node = @import("parser.zig").Node;
 const Item = @import("../vm/mod.zig").Item;
+const Function = @import("../vm/mod.zig").Function;
 const Text = @import("../vm/mod.zig").Text;
 const Object = @import("../vm/mod.zig").Object;
 const Stack = @import("../stack.zig").Stack;
@@ -146,7 +147,12 @@ pub const Instr = union(enum) {
     no_op,
     ret,
     call,
-    call_extern,
+    call_extern: struct {
+        result: Address,
+        arg_start: ?Address,
+        callee: Address,
+        has_return: bool,
+    },
     invoke,
     invoke_extern,
     make_closure,
@@ -163,6 +169,7 @@ pub const Instr = union(enum) {
     store_global: Load,
     get_upvalue: Load,
     set_upvalue: Load,
+    copy: Load,
 
     // Arithmetic
     add_u64: Arithmetic,
@@ -261,7 +268,10 @@ pub const Instr = union(enum) {
             .no_op => return "",
             .ret => return std.fmt.bufPrint(buffer, "return", .{}),
             .call => unreachable,
-            .call_extern => unreachable,
+            .call_extern => |ce| {
+                const result = ce.result.register();
+                return std.fmt.bufPrint(buffer, "extern_fn:\t() -> reg[{}]", .{result});
+            },
             .invoke => unreachable,
             .invoke_extern => unreachable,
             .make_closure => unreachable,
@@ -301,6 +311,11 @@ pub const Instr = union(enum) {
                 const real = gu.result.register();
                 const source = gu.a.literal();
                 return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}] = reg[{}]", .{ @tagName(self), real, source });
+            },
+            .copy => |cp| {
+                const real = cp.result.register();
+                const source = cp.a.literal();
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = reg[{}]", .{ @tagName(self), real, source });
             },
 
             // meta
@@ -606,6 +621,14 @@ pub const IR = struct {
                         too_print.as_slice(),
                     });
                 },
+                .Fn => {
+                    const too_print = "a fn"; //item.resolve_object().Fn();
+                    std.debug.print("[{} : {s}]: \"{s}\"\n", .{
+                        i,
+                        @tagName(lk),
+                        too_print, //.as_slice(),
+                    });
+                },
 
                 // obhects that are not builtin
                 .Object => unreachable,
@@ -738,6 +761,7 @@ pub const Scope = union(enum) {
 pub const Compiler = struct {
     allocator: Allocator,
     config: *FeanConfig,
+    heap: *heap.Heap,
     literals: *Stack(Item),
     literal_count: *u40,
     literals_typing: *Stack(LitKind),
@@ -753,6 +777,8 @@ pub const Compiler = struct {
         var self = @This(){
             .allocator = config.allocator,
             .config = config,
+            // todo share it with vm
+            .heap = try heap.Heap.create(config.allocator),
             .literals = &meta.literals,
             .literal_count = &meta.literal_count,
             .literals_typing = &meta.literals_typing,
@@ -791,13 +817,13 @@ pub const Compiler = struct {
         var head_body = ast.head;
 
         for (head_body) |n| {
-            _ = try self.generate(n, head, null);
+            _ = try self.generate(n, head, null, null);
         }
 
         return head.head;
     }
 
-    fn generate(self: *@This(), node: *Node, scope: Scope, result: ?Address) anyerror!?Address {
+    fn generate(self: *@This(), node: *Node, scope: Scope, result: ?Address, extra: ?Address) anyerror!?Address {
         switch (node.*) {
             .scope => |s| {
                 // todo maybe allow scoped typing
@@ -807,7 +833,7 @@ pub const Compiler = struct {
                 try self.dive(scope);
 
                 for (s.statments.?) |stmnt| {
-                    _ = try self.generate(stmnt, block, null);
+                    _ = try self.generate(stmnt, block, null, null);
                 }
 
                 try scope.push_instr(Instr{ .block = block.block });
@@ -820,7 +846,13 @@ pub const Compiler = struct {
                     _ = try self.generate_local_variable(node, scope);
                 }
             },
-            .constant => try self.generate_global_variable(node, scope),
+            .constant => {
+                if (scope.is_head()) {
+                    _ = try self.generate_global_constant(node, scope);
+                } else {
+                    _ = try self.generate_local_variable(node, scope);
+                }
+            },
             .assignment => try self.generate_assignment(node, scope),
             .statment => |s| {
                 switch (s.kind) {
@@ -829,13 +861,28 @@ pub const Compiler = struct {
                         const address = result orelse scope.get_temp().?;
                         defer if (result == null) scope.drop_temp();
 
-                        _ = try self.generate(s.value, scope, address);
+                        _ = try self.generate(s.value.?, scope, address, null);
                     },
                     .Return => {
-                        const address = Address.new_register(0);
-                        _ = try self.generate(s.value, scope, address);
-                        try scope.push_instr(.ret);
+                        if (s.value == null) {
+                            try scope.push_instr(.ret);
+                        } else {
+                            const address = scope.get_temp().?;
+                            defer scope.drop_temp();
+
+                            _ = try self.generate(s.value.?, scope, address, null);
+
+                            try scope.push_instr(Instr{ .copy = .{ .result = Address.new_register(0), .a = address } });
+                            try scope.push_instr(.ret);
+                        }
                     },
+                }
+            },
+            .function => |func| {
+                if (func.is_extern) {
+                    try self.generate_extern_function(node, scope, result.?);
+                } else {
+                    //todo implement
                 }
             },
             .conditional_if => try self.generate_conditional_if(node, scope),
@@ -848,8 +895,14 @@ pub const Compiler = struct {
                 try self.generate_binary_expression(node, scope, address);
             },
             .unary_expression => unreachable,
-            .literal => {
+            .call => {
+                // todo handle no registers!
+                const address = if (result != null) result.? else scope.get_temp().?;
+                defer if (result == null) scope.drop_temp();
 
+                try self.generate_call(node, scope, address, extra);
+            },
+            .literal => {
                 // todo handle no registers!
                 const address = if (result != null) result.? else scope.get_temp().?;
                 defer if (result == null) scope.drop_temp();
@@ -886,7 +939,7 @@ pub const Compiler = struct {
             // the value we want to put in the global variable
             var tmp = scope.get_temp().?;
             var tmp_moved = false;
-            var gen_result = try self.generate(variable.value.?, scope, tmp);
+            var gen_result = try self.generate(variable.value.?, scope, tmp, null);
             defer {
                 if (!tmp_moved) {
                     scope.drop_temp();
@@ -914,6 +967,54 @@ pub const Compiler = struct {
         });
     }
 
+    fn generate_global_constant(self: *@This(), node: *Node, scope: Scope) !void {
+        const constant = node.constant;
+
+        var obj = try self.copy_text(constant.name);
+
+        // the stack adress for the lookup name of the global variable
+        const global_name = scope.get_temp().?;
+        defer scope.drop_temp();
+
+        const lit = try self.push_literal(.{
+            .object = obj,
+        }, .Text);
+
+        try scope.push_instr(.{ .load_literal = .{
+            .result = global_name,
+            .a = lit,
+        } });
+
+        // the value we want to put in the global variable
+        var tmp = scope.get_temp().?;
+        var tmp_moved = false;
+        var gen_result = try self.generate(constant.value, scope, tmp, null);
+        defer {
+            if (!tmp_moved) {
+                scope.drop_temp();
+            }
+        }
+
+        if (gen_result != null) {
+            tmp_moved = true;
+            scope.drop_temp();
+            tmp = gen_result.?;
+        }
+
+        try scope.push_instr(.{ .store_global = .{
+            .a = tmp,
+            .result = global_name,
+        } });
+
+        // todo maybe try to resolve the kind one last time?
+        var symbol = scope.lookup_symbol(constant.name).?;
+
+        try scope.push_global(Global{
+            .value = Item.default(),
+            .symbol = symbol,
+        });
+    }
+
     fn generate_local_variable(self: *@This(), node: *Node, scope: Scope) !void {
         const variable = node.variable;
         const register = scope.get_reg().?;
@@ -925,7 +1026,7 @@ pub const Compiler = struct {
         symbol.depth = self.depth;
 
         if (variable.value != null) {
-            _ = try self.generate(variable.value.?, scope, register);
+            _ = try self.generate(variable.value.?, scope, register, null);
         }
     }
 
@@ -991,7 +1092,7 @@ pub const Compiler = struct {
             // the value we want to put in the global variable
             var tmp = scope.get_temp().?;
             var tmp_moved = false;
-            var gen_result = try self.generate(assignment.value, scope, tmp);
+            var gen_result = try self.generate(assignment.value, scope, tmp, null);
             defer {
                 if (!tmp_moved) {
                     scope.drop_temp();
@@ -1015,7 +1116,7 @@ pub const Compiler = struct {
                 unreachable;
             } else {
                 const result = Address.new_register(symbol.binding);
-                _ = try self.generate(assignment.value, scope, result);
+                _ = try self.generate(assignment.value, scope, result, null);
             }
         }
     }
@@ -1025,7 +1126,7 @@ pub const Compiler = struct {
 
         var condition = scope.get_temp().?;
         var condition_moved = false;
-        var gen_result = try self.generate(conditional.condition, scope, condition);
+        var gen_result = try self.generate(conditional.condition, scope, condition, null);
         defer {
             if (!condition_moved) {
                 scope.drop_temp();
@@ -1050,7 +1151,7 @@ pub const Compiler = struct {
                 .offset = end_dest,
             } });
 
-            _ = try self.generate(conditional.if_then, scope, null);
+            _ = try self.generate(conditional.if_then, scope, null, null);
 
             try scope.push_instr(Instr{ .destination = end_dest });
         } else {
@@ -1062,7 +1163,7 @@ pub const Compiler = struct {
                 .offset = else_dest,
             } });
 
-            _ = try self.generate(conditional.if_then, scope, null);
+            _ = try self.generate(conditional.if_then, scope, null, null);
 
             try scope.push_instr(Instr{ .jmp = .{
                 .offset = end_dest,
@@ -1070,7 +1171,7 @@ pub const Compiler = struct {
 
             try scope.push_instr(Instr{ .destination = else_dest });
 
-            _ = try self.generate(conditional.if_else.?, scope, null);
+            _ = try self.generate(conditional.if_else.?, scope, null, null);
 
             try scope.push_instr(Instr{ .destination = end_dest });
         }
@@ -1084,7 +1185,7 @@ pub const Compiler = struct {
 
         var condition = scope.get_temp().?;
         var condition_moved = false;
-        var gen_result = try self.generate(conditional.condition, scope, condition);
+        var gen_result = try self.generate(conditional.condition, scope, condition, null);
         defer {
             if (!condition_moved) {
                 scope.drop_temp();
@@ -1108,7 +1209,7 @@ pub const Compiler = struct {
             .offset = end_dest,
         } });
 
-        _ = try self.generate(conditional.body, scope, null);
+        _ = try self.generate(conditional.body, scope, null, null);
 
         try scope.push_instr(Instr{ .jmp = .{
             .offset = loop_dest,
@@ -1123,7 +1224,7 @@ pub const Compiler = struct {
         // todo handle no registers!
         var lhs = scope.get_temp().?;
         var lhs_moved = false;
-        var gen_result = try self.generate(exp.lhs, scope, lhs);
+        var gen_result = try self.generate(exp.lhs, scope, lhs, null);
         defer {
             if (!lhs_moved) {
                 scope.drop_temp();
@@ -1138,7 +1239,7 @@ pub const Compiler = struct {
 
         var rhs = scope.get_temp().?;
         var rhs_moved = false;
-        gen_result = try self.generate(exp.rhs, scope, rhs);
+        gen_result = try self.generate(exp.rhs, scope, rhs, null);
         defer {
             if (!rhs_moved) {
                 scope.drop_temp();
@@ -1206,7 +1307,65 @@ pub const Compiler = struct {
         }
     }
 
+    fn generate_extern_function(self: *@This(), node: *Node, scope: Scope, result: Address) !void {
+        const function = node.function;
+
+        const ptr = self.config.fn_lookup.?(function.body.name);
+        const object = try self.heap.alloc_object(@sizeOf(Function));
+        const body = object.item.resolve(*Function);
+        body.* = Function{ .external = .{
+            .arity = @intCast(u8, function.params.len),
+            .result = (function.result != null),
+            .body = ptr.?,
+        } };
+
+        const lit = try self.push_literal(Item{ .object = object.obj }, .Fn);
+        try scope.push_instr(.{ .load_literal = .{
+            .result = result,
+            .a = lit,
+        } });
+    }
+
+    fn generate_call(self: *@This(), node: *Node, scope: Scope, result: Address, arg_start: ?Address) !void {
+        const call = node.call;
+        const fn_identity = scope.lookup_symbol(call.name).?;
+
+        const name = try self.copy_text(call.name);
+        const name_lit = try self.push_literal(.{ .object = name }, .Text);
+
+        // the stack adress for the callable function
+        const function_register = scope.get_temp().?;
+        defer scope.drop_temp();
+
+        if (fn_identity.global) {
+            // the stack adress for the lookup name of the global variable
+            const global_name = scope.get_temp().?;
+            defer scope.drop_temp();
+
+            try scope.push_instr(.{ .load_literal = .{
+                .result = global_name,
+                .a = name_lit,
+            } });
+
+            // load the global into a register
+            try scope.push_instr(.{ .load_global = .{
+                .result = function_register,
+                .a = global_name,
+            } });
+        } else {
+            unreachable;
+        }
+
+        try scope.push_instr(.{ .call_extern = .{
+            .result = result,
+            .arg_start = arg_start,
+            .callee = function_register,
+            .has_return = true,
+        } });
+    }
+
     fn generate_literal(self: *@This(), node: *Node, scope: Scope, result: Address) !?Address {
+        // todo use heap, and jut mark the as non collectable
         switch (node.literal.data) {
             .integer => |val| {
                 var item: Item = Item{ .i64 = val };
@@ -1326,6 +1485,9 @@ pub const Compiler = struct {
                         const found_text = found.resolve_object().text();
                         same = literal.resolve_object().text().eq(found_text);
                     },
+                    .Fn => {
+                        unreachable;
+                    },
 
                     // objects that are not builtin
                     .Object => unreachable,
@@ -1379,6 +1541,7 @@ const LitKind = enum {
     f32,
     bool,
     Text,
+    Fn,
 
     // objects that are not builtin
     Object,

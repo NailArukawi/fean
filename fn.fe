@@ -1,0 +1,5 @@
+zamn : fn : fn() -> i64 {
+    return 23;
+}
+
+return zamn();

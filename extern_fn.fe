@@ -1,0 +1,3 @@
+zamn : Fn : extern fn() -> i64;
+
+return zamn();

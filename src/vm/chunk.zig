@@ -50,7 +50,7 @@ pub const Chunk = struct {
 
                 // Memory (10)
                 .load_true, .load_false, .load_literal, .load_literal_obj => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = const[{}])\n", .{ i, @tagName(op.op), op.a(), op.y() }),
-                .load_global, .load_global_obj => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = global[{}])\n", .{ i, @tagName(op.op), op.a(), op.b() }),
+                .load_global, .load_global_obj => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = global[{}])\n", .{ i, @tagName(op.op), op.b(), op.a() }),
                 .store_global => std.debug.print("[{}]:\t[{s}]\t(global[{}] = reg[{}])\n", .{ i, @tagName(op.op), op.a(), op.b() }),
                 .get_upvalue => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = stack[{}])\n", .{ i, @tagName(op.op), op.a(), op.y() }),
                 .set_upvalue => unreachable,

@@ -13,9 +13,9 @@ pub const CallFrame = struct {
     ip: usize,
 };
 
-pub const Function = extern union {
-    internal: *InternalFunction,
-    external: *ExternFunction,
+pub const Function = union {
+    internal: InternalFunction,
+    external: ExternFunction,
 };
 
 pub const InternalFunction = struct { arity: u8, result: bool, body: *Chunk };

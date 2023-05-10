@@ -19,7 +19,6 @@ pub const Item = extern union {
     // todo make nil a null type
     nil: u8,
     object: *Ref,
-    function: Function,
 
     // raw data,
     // comes from non heap allocated complier constructs.
@@ -35,6 +34,10 @@ pub const Item = extern union {
 
     pub inline fn dict(self: @This()) *Dict {
         return self.resolve_object().dict();
+    }
+
+    pub inline fn function(self: @This()) *Function {
+        return self.resolve_object().function();
     }
 
     pub inline fn from(comptime T: type, V: anytype) @This() {

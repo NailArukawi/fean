@@ -9,6 +9,8 @@ const Scanner = @import("scanner.zig").Scanner;
 
 pub const AST = @import("ast.zig").AST;
 pub const Node = @import("ast.zig").Node;
+pub const Parameter = @import("ast.zig").Parameter;
+pub const FunctionBody = @import("ast.zig").FunctionBody;
 
 pub const KindTable = @import("kindtable.zig").KindTable;
 pub const SymbolTable = @import("symboltable.zig").SymbolTable;
@@ -124,6 +126,10 @@ pub const Parser = struct {
                     .symbol = null,
                 },
             };
+
+            if (std.mem.eql(u8, result.constant.kind.unresolved, "Fn") and result.constant.value.function.is_extern) {
+                result.constant.value.function.body.name = result.constant.name;
+            }
         } else if (self.of_kind(.equal)) {
             result.* = Node{
                 .variable = .{
@@ -133,6 +139,10 @@ pub const Parser = struct {
                     .symbol = null,
                 },
             };
+
+            if (std.mem.eql(u8, result.variable.kind.unresolved, "Fn") and result.variable.value.?.function.is_extern) {
+                result.variable.value.?.function.body.name = result.variable.name;
+            }
         } else if (self.of_kind(.semi_colon)) {
             result.* = Node{
                 .variable = .{
@@ -142,11 +152,16 @@ pub const Parser = struct {
                     .symbol = null,
                 },
             };
+
+            if (std.mem.eql(u8, result.variable.kind.unresolved, "Fn") and result.variable.value.?.function.is_extern) {
+                result.variable.value.?.function.body.name = result.variable.name;
+            }
         } else {
             // todo do better
             if (self.is_eos()) {
                 @panic("Hit found the end of the file before the end of variable decleration!\n");
             } else {
+                // todo fix
                 const ree = self.peek().?;
                 std.debug.print("[{}:{}] Expected semicolon to end variable decleration!", .{ ree.span.line, ree.span.pos });
             }
@@ -162,6 +177,16 @@ pub const Parser = struct {
         if (self.of_kind(.Return)) {
             return self.statment_return(scope);
         }
+        // we have a extern fn
+        else if (self.check(.Extern) and self.check_next(.Fn)) {
+            _ = self.pop().?;
+            _ = self.pop().?;
+            return self.statment_function(true, scope);
+        }
+        // we have a native fn
+        else if (self.of_kind(.Fn)) {
+            return self.statment_function(false, scope);
+        }
         // we have an if
         else if (self.of_kind(.If)) {
             return self.statment_if(scope);
@@ -175,6 +200,93 @@ pub const Parser = struct {
             return self.statment_block(scope);
         }
         return self.statment_expression(scope);
+    }
+
+    fn statment_function(self: *@This(), is_extern: bool, scope: *Node) *Node {
+
+        // parameter body
+        self.consume_kind(.paren_left, "expected fn parameters to start with a (");
+        const param_count = self.parameter_count();
+        var parameters = self.allocator.alloc(Parameter, param_count) catch unreachable;
+        self.parameter_parse(&parameters, scope);
+        self.consume_kind(.paren_right, "expected fn parameters to end with a )");
+
+        // return
+        self.consume_kind(.right_arrow, "fn to have a -> type after body");
+        self.check_err(.identifier, "expected an identifier after ->");
+        const kind_name = self.pop().?.data.identifier;
+        var result: ?SymbolKind = null;
+        if (!std.mem.eql(u8, kind_name, "void")) {
+            result = SymbolKind{ .unresolved = kind_name };
+        }
+
+        var function = self.allocator.create(Node) catch unreachable;
+
+        // body
+        if (!is_extern) {
+            self.check_err(.identifier, "expected a body after function\n fn() -> type {\n...\n}");
+            var body = self.statment_block(scope);
+
+            function.* = Node{
+                .function = .{
+                    .params = parameters,
+                    .result = result,
+                    .body = FunctionBody{ .body = body },
+                    .is_extern = is_extern,
+                },
+            };
+        } else {
+            function.* = Node{
+                .function = .{
+                    .params = parameters,
+                    .result = result,
+                    .body = FunctionBody{ .name = "" },
+                    .is_extern = is_extern,
+                },
+            };
+            self.consume_kind(.semi_colon, "expected extern fn to have a semicolon at the end");
+        }
+
+        //self.consume_kind(.right_arrow, "fn to have a ; at the end");
+
+        return function;
+    }
+
+    inline fn parameter_count(self: *@This()) usize {
+        var count: usize = 0;
+        var cursor: usize = 0;
+
+        // todo make better
+        while (!self.check_ahead(.paren_right, cursor)) {
+            if (self.check_ahead(.comma, cursor)) {
+                count += 1;
+            }
+            cursor += 1;
+        }
+
+        return count;
+    }
+
+    inline fn parameter_parse(self: *@This(), write_to: *[]Parameter, scope: *Node) void {
+        _ = scope;
+        var i: usize = 0;
+        while (!self.check(.paren_right)) {
+            // parameter
+            self.check_err(.identifier, "expected an identifier for parameter");
+            const name = self.pop().?;
+            self.consume_kind(.paren_left, "expected parameter identifier to have a delimiting :");
+            self.check_err(.identifier, "expected an identifier for parameter");
+            const kind = self.pop().?;
+
+            // commas
+            if (i != write_to.len) {
+                self.consume_kind(.paren_left, "expected parameter to have a delimiting ,");
+            }
+
+            const parameter = Parameter{ .name = name.data.identifier, .symbol = null, .kind = .{ .unresolved = kind.data.identifier } };
+            write_to.*[i] = parameter;
+            i += 1;
+        }
     }
 
     fn statment_if(self: *@This(), scope: *Node) *Node {
@@ -224,12 +336,20 @@ pub const Parser = struct {
     }
 
     fn statment_return(self: *@This(), scope: *Node) *Node {
-        const expr = self.expression(scope);
-        self.consume_kind(.semi_colon, "Expected return statment to end with a ;");
-        var result = self.allocator.create(Node) catch unreachable;
+        if (!self.check(.semi_colon)) {
+            const expr = self.expression(scope);
+            self.consume_kind(.semi_colon, "Expected return statment to end with a ;");
+            var result = self.allocator.create(Node) catch unreachable;
 
-        result.* = Node{ .statment = .{ .kind = .Return, .value = expr } };
-        return result;
+            result.* = Node{ .statment = .{ .kind = .Return, .value = expr } };
+            return result;
+        } else {
+            self.consume_kind(.semi_colon, "Expected return statment to end with a ;");
+            var result = self.allocator.create(Node) catch unreachable;
+
+            result.* = Node{ .statment = .{ .kind = .Return, .value = null } };
+            return result;
+        }
     }
 
     fn statment_block(self: *@This(), scope: *Node) *Node {
@@ -352,13 +472,59 @@ pub const Parser = struct {
         const match = [_]TokenKind{ .bang, .minus };
         if (self.of_kinds(&match)) {
             var operator = self.prev();
-            var value = self.primary(scope);
+            var value = self.call(scope);
 
             var result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .unary_expression = .{ .op = operator, .value = value } };
+            return result;
         }
 
-        return self.primary(scope);
+        return self.call(scope);
+    }
+
+    fn call(self: *@This(), scope: *Node) *Node {
+        var result = self.primary(scope);
+
+        if (self.of_kind(.paren_left)) {
+            const args = self.arguments(scope);
+            self.consume_kind(.paren_right, "Expected call arguments to end with a )");
+
+            const name = result;
+
+            result = self.allocator.create(Node) catch unreachable;
+            result.* = Node{
+                .call = .{
+                    // todo mem leak
+                    .name = name.literal.data.identifier,
+                    .symbol = null,
+                    .arguments = args,
+                },
+            };
+        }
+
+        return result;
+    }
+
+    inline fn arguments(self: *@This(), scope: *Node) ?[]*Node {
+        var count: usize = 0;
+        var cursor: usize = 0;
+
+        while (!self.check_ahead(.paren_right, cursor)) {
+            if (self.check_ahead(.comma, cursor)) {
+                count += 1;
+            }
+            cursor += 1;
+        }
+
+        var i: usize = 0;
+        var write_to = self.allocator.alloc(*Node, count) catch unreachable;
+        while (!self.check(.paren_right)) {
+            var argument = self.expression(scope);
+            write_to[i] = argument;
+            i += 1;
+        }
+
+        return write_to;
     }
 
     fn primary(self: *@This(), scope: *Node) *Node {
@@ -396,6 +562,7 @@ pub const Parser = struct {
             return result;
         }
 
+        std.debug.print("[{}:{}]Unexpected token: {}\n", .{ self.peek().?.span.line, self.peek().?.span.pos, self.peek().? });
         unreachable;
     }
 
@@ -473,6 +640,14 @@ pub const Parser = struct {
             return false;
         }
         return TokenKind.translate_from(self.peek().?.data) == kind;
+    }
+
+    fn check_err(self: *@This(), kind: TokenKind, comptime err: []const u8) void {
+        if (self.check(kind)) {
+            return;
+        } else {
+            std.debug.panic("{s}\n", .{err});
+        }
     }
 
     fn is_eos(self: *@This()) bool {

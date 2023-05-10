@@ -15,6 +15,17 @@ pub const AST = struct {
     kinds: ?*KindTable,
 };
 
+pub const Parameter = struct {
+    name: []const u8,
+    symbol: ?Symbol,
+    kind: SymbolKind,
+};
+
+pub const FunctionBody = union {
+    name: []const u8,
+    body: *Node,
+};
+
 pub const Node = union(enum) {
     scope: struct {
         parent: ?*Node,
@@ -72,7 +83,7 @@ pub const Node = union(enum) {
                         to_insert.variable.symbol = self.symbols;
                     },
                     .constant => {
-                        to_insert.variable.symbol = self.symbols;
+                        to_insert.constant.symbol = self.symbols;
                     },
                     else => unreachable,
                 }
@@ -135,9 +146,15 @@ pub const Node = union(enum) {
         symbol: ?Symbol,
         value: *Node,
     },
+    function: struct {
+        params: []Parameter,
+        result: ?SymbolKind,
+        body: FunctionBody,
+        is_extern: bool,
+    },
     statment: struct {
         kind: StatmentKind,
-        value: *Node,
+        value: ?*Node,
     },
     conditional_if: struct {
         condition: *Node,
@@ -157,6 +174,11 @@ pub const Node = union(enum) {
     unary_expression: struct {
         op: Token,
         value: *Node,
+    },
+    call: struct {
+        name: []const u8,
+        symbol: ?Symbol,
+        arguments: ?[]*Node,
     },
     literal: Token,
 };

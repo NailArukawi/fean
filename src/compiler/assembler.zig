@@ -117,7 +117,17 @@ pub const Assembler = struct {
                 try self.push_op(opcode);
             },
             .call => unreachable,
-            .call_extern => unreachable,
+            .call_extern => |ce| {
+                var opcode = Opcode.new();
+                opcode.op = Op.call_extern;
+
+                opcode.set_a(ce.result.register());
+                opcode.set_b(0); // todo
+                opcode.set_c(ce.callee.register());
+                opcode.set_d(1); //todo
+
+                try self.push_op(opcode);
+            },
             .invoke => unreachable,
             .invoke_extern => unreachable,
             .make_closure => unreachable,
@@ -210,6 +220,18 @@ pub const Assembler = struct {
 
                 const real = load.a.upvalue();
                 opcode.set_y(@intCast(u22, real));
+
+                try self.push_op(opcode);
+            },
+            .copy => |load| {
+                var opcode = Opcode.new();
+                opcode.op = Op.copy;
+
+                const storee = load.result.register();
+                opcode.set_a(storee);
+
+                const value = load.a.register();
+                opcode.set_b(value);
 
                 try self.push_op(opcode);
             },

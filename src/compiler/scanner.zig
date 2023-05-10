@@ -46,6 +46,8 @@ const KW_MAP = [_]KWPair{
     KWPair{ .hash = kw_hash("true"), .keyword = Keyword.True },
     KWPair{ .hash = kw_hash("false"), .keyword = Keyword.False },
     KWPair{ .hash = kw_hash("while"), .keyword = Keyword.While },
+    KWPair{ .hash = kw_hash("fn"), .keyword = Keyword.Fn },
+    KWPair{ .hash = kw_hash("extern"), .keyword = Keyword.Extern },
 };
 
 fn is_keyword(token: *Token) void {
@@ -93,7 +95,7 @@ pub const Scanner = struct {
         return result;
     }
 
-    inline fn decode_next_token(self: *@This()) !Token {
+    fn decode_next_token(self: *@This()) !Token {
         if (self.is_eos()) {
             return Token.new_symbol(.EOS, self.cursor);
         }
@@ -104,6 +106,15 @@ pub const Scanner = struct {
             if (w == '\n') {
                 self.cursor.newline();
             }
+        }
+
+        if (self.is_comment()) {
+            while (self.peek() != '\n') {
+                _ = self.pop();
+            }
+
+            _ = self.pop();
+            return self.decode_next_token();
         }
 
         const first = self.pop();
@@ -119,7 +130,7 @@ pub const Scanner = struct {
             ':' => return self.handle_colon(),
             ';' => return Token.new_symbol(.semi_colon, self.cursor),
             '+' => return Token.new_symbol(.plus, self.cursor),
-            '-' => return Token.new_symbol(.minus, self.cursor),
+            '-' => return self.handle_minus(),
             '/' => return Token.new_symbol(.slash, self.cursor),
             '!' => return self.handle_bang(),
             '=' => return self.handle_equal(),
@@ -149,6 +160,21 @@ pub const Scanner = struct {
 
         print_error(self.config, self.cursor, "Could not decode token");
         return error.could_not_decode;
+    }
+
+    inline fn handle_minus(self: *@This()) !Token {
+        if (self.is_eos()) {
+            return Token.new_symbol(.minus, self.cursor);
+        }
+
+        const next = self.peek();
+        switch (next) {
+            '>' => {
+                _ = self.pop();
+                return Token.new_symbol(.right_arrow, self.cursor);
+            },
+            else => return Token.new_symbol(.minus, self.cursor),
+        }
     }
 
     inline fn handle_colon(self: *@This()) !Token {
@@ -338,6 +364,10 @@ pub const Scanner = struct {
         }
     }
 
+    inline fn ahead(self: *@This()) Rune {
+        return self.runes.items[self.rune_index + 1];
+    }
+
     inline fn peek(self: *@This()) Rune {
         return self.runes.items[self.rune_index];
     }
@@ -364,6 +394,14 @@ pub const Scanner = struct {
 
     inline fn is_eos(self: *@This()) bool {
         return self.rune_index > (self.runes.items.len - 1);
+    }
+
+    inline fn is_comment(self: *@This()) bool {
+        if ((self.peek() == '/') and (self.ahead() == '/')) {
+            return true;
+        }
+
+        return false;
     }
 };
 

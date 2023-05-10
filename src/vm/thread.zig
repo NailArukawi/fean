@@ -141,20 +141,20 @@ pub const Thread = struct {
                     self.reg_to_top() catch unreachable;
                 },
                 .call_extern => {
-                    const a = opcode.a();
-                    const b = opcode.b();
-                    const c = opcode.c();
-                    const d = opcode.d();
-                    const function = self.register[c].function.external;
+                    const result = opcode.a();
+                    const arg_start = opcode.b();
+                    const callee = opcode.c();
+                    const has_return = opcode.d();
+                    const function = self.register[callee].function().external;
 
-                    if (d == 0) {
+                    if (has_return == 0) {
                         // call extern method with no return value
                         const arity = function.arity;
-                        function.body(self.register[b..(b + arity)], null);
+                        function.body(self.register[arg_start..(arg_start + arity)], null);
                     } else {
                         // call extern method with return value
                         const arity = function.arity;
-                        function.body(self.register[b..(b + arity)], &self.register[a]);
+                        function.body(self.register[arg_start..(arg_start + arity)], &self.register[result]);
                     }
                 },
                 //.invoke_extern => {
@@ -216,6 +216,12 @@ pub const Thread = struct {
                     const a = opcode.a();
                     const y = opcode.y();
                     self.stack.inner[y] = self.register[a];
+                },
+                // todo copy obj bit
+                .copy => {
+                    const result = opcode.a();
+                    const value = opcode.b();
+                    self.register[result] = self.register[value];
                 },
 
                 // Arithmetic
