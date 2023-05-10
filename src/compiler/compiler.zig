@@ -308,9 +308,12 @@ pub const Instr = union(enum) {
                 return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = stack[{}]", .{ @tagName(self), result, real });
             },
             .set_upvalue => |gu| {
+                const nested_size: usize = 32;
+                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
+
                 const real = gu.result.register();
-                const source = gu.a.literal();
-                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}] = reg[{}]", .{ @tagName(self), real, source });
+                const source = try gu.a.debug(&nested_buffer);
+                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}] = {s}", .{ @tagName(self), real, source });
             },
             .copy => |cp| {
                 const real = cp.result.register();
@@ -867,13 +870,40 @@ pub const Compiler = struct {
                         if (s.value == null) {
                             try scope.push_instr(.ret);
                         } else {
-                            const address = scope.get_temp().?;
-                            defer scope.drop_temp();
+                            if (self.depth == 0) {
+                                // we are not nested
+                                const address = scope.get_temp().?;
+                                defer scope.drop_temp();
 
-                            _ = try self.generate(s.value.?, scope, address, null);
+                                _ = try self.generate(s.value.?, scope, address, null);
 
-                            try scope.push_instr(Instr{ .copy = .{ .result = Address.new_register(0), .a = address } });
-                            try scope.push_instr(.ret);
+                                try scope.push_instr(Instr{ .copy = .{ .result = Address.new_register(0), .a = address } });
+                                try scope.push_instr(.ret);
+                            } else {
+                                // we are nested
+                                var address = scope.get_temp().?;
+                                var address_moved = false;
+
+                                var gen_result = try self.generate(s.value.?, scope, address, null);
+
+                                defer {
+                                    if (!address_moved) {
+                                        scope.drop_temp();
+                                    }
+                                }
+
+                                if (gen_result != null) {
+                                    address_moved = true;
+                                    scope.drop_temp();
+                                    address = gen_result.?;
+                                }
+
+                                // todo make smarter?
+                                const lower_o: u56 = 0;
+
+                                try scope.push_instr(Instr{ .set_upvalue = .{ .result = Address.new_upvalue(lower_o), .a = address } });
+                                try scope.push_instr(.ret);
+                            }
                         }
                     },
                 }
@@ -894,7 +924,36 @@ pub const Compiler = struct {
 
                 try self.generate_binary_expression(node, scope, address);
             },
-            .unary_expression => unreachable,
+            .unary_expression => |ue| {
+                const op = ue.op.data.symbol;
+                if (op == .bang) {
+                    // todo make it look for kind
+                    const address = if (result != null) result.? else scope.get_temp().?;
+                    defer if (result == null) scope.drop_temp();
+                    // we are nested
+
+                    var tmp = scope.get_temp().?;
+                    var tmp_moved = false;
+
+                    var gen_result = try self.generate(ue.value, scope, tmp, null);
+
+                    defer {
+                        if (!tmp_moved) {
+                            scope.drop_temp();
+                        }
+                    }
+
+                    if (gen_result != null) {
+                        tmp_moved = true;
+                        scope.drop_temp();
+                        tmp = gen_result.?;
+                    }
+
+                    try scope.push_instr(Instr{ .not = .{ .source = tmp, .dest = address } });
+                    return null;
+                }
+                unreachable;
+            },
             .call => {
                 // todo handle no registers!
                 const address = if (result != null) result.? else scope.get_temp().?;

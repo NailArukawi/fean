@@ -388,6 +388,11 @@ pub const Parser = struct {
         ) {
             return self.expression_assignment(scope);
         }
+        if (self.check(.identifier) // X
+        and (self.check_next(.plus_equal) or self.check_next(.minus_equal) or self.check_next(.slash_equal) or self.check_next(.star_equal)) // x=
+        ) {
+            return self.expression_assignment(scope);
+        }
 
         return self.equality(scope);
     }
@@ -395,11 +400,42 @@ pub const Parser = struct {
     // todo lookup symbol
     fn expression_assignment(self: *@This(), scope: *Node) *Node {
         var identity = self.pop().?;
-        _ = self.pop().?; // =
+        const is_short = (self.check(.plus_equal) or self.check(.minus_equal) or self.check(.slash_equal) or self.check(.star_equal));
+        var short: ?Token = null;
+        if (is_short) {
+            if (self.check(.plus_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.plus, old.span);
+            } else if (self.check(.minus_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.minus, old.span);
+            } else if (self.check(.slash_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.slash, old.span);
+            } else if (self.check(.star_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.star, old.span);
+            } else {
+                unreachable;
+            }
+        } else {
+            _ = self.pop().?; // =
+        }
+
         var value = self.equality(scope);
 
         var result = self.allocator.create(Node) catch unreachable;
-        result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = value } };
+        if (is_short) {
+            var this = self.allocator.create(Node) catch unreachable;
+            this.* = Node{ .literal = identity };
+
+            var expanded = self.allocator.create(Node) catch unreachable;
+            expanded.* = Node{ .binary_expression = .{ .lhs = this, .op = short.?, .rhs = value, .kind = null } };
+
+            result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = expanded } };
+        } else {
+            result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = value } };
+        }
 
         return result;
     }
@@ -639,6 +675,7 @@ pub const Parser = struct {
         if (self.is_eos()) {
             return false;
         }
+
         return TokenKind.translate_from(self.peek().?.data) == kind;
     }
 

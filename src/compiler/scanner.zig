@@ -133,9 +133,10 @@ pub const Scanner = struct {
             '.' => return Token.new_symbol(.dot, self.cursor),
             ':' => return self.handle_colon(),
             ';' => return Token.new_symbol(.semi_colon, self.cursor),
-            '+' => return Token.new_symbol(.plus, self.cursor),
+            '+' => return self.handle_plus(),
             '-' => return self.handle_minus(),
-            '/' => return Token.new_symbol(.slash, self.cursor),
+            '/' => return self.handle_slash(),
+            '*' => return self.handle_star(),
             '!' => return self.handle_bang(),
             '=' => return self.handle_equal(),
             '>' => return self.handle_greater(),
@@ -166,6 +167,21 @@ pub const Scanner = struct {
         return error.could_not_decode;
     }
 
+    inline fn handle_plus(self: *@This()) !Token {
+        if (self.is_eos()) {
+            return Token.new_symbol(.plus, self.cursor);
+        }
+
+        const next = self.peek();
+        switch (next) {
+            '=' => {
+                _ = self.pop();
+                return Token.new_symbol(.plus_equal, self.cursor);
+            },
+            else => return Token.new_symbol(.plus, self.cursor),
+        }
+    }
+
     inline fn handle_minus(self: *@This()) !Token {
         if (self.is_eos()) {
             return Token.new_symbol(.minus, self.cursor);
@@ -173,11 +189,45 @@ pub const Scanner = struct {
 
         const next = self.peek();
         switch (next) {
+            '=' => {
+                _ = self.pop();
+                return Token.new_symbol(.minus_equal, self.cursor);
+            },
             '>' => {
                 _ = self.pop();
                 return Token.new_symbol(.right_arrow, self.cursor);
             },
             else => return Token.new_symbol(.minus, self.cursor),
+        }
+    }
+
+    inline fn handle_slash(self: *@This()) !Token {
+        if (self.is_eos()) {
+            return Token.new_symbol(.slash, self.cursor);
+        }
+
+        const next = self.peek();
+        switch (next) {
+            '=' => {
+                _ = self.pop();
+                return Token.new_symbol(.slash_equal, self.cursor);
+            },
+            else => return Token.new_symbol(.slash, self.cursor),
+        }
+    }
+
+    inline fn handle_star(self: *@This()) !Token {
+        if (self.is_eos()) {
+            return Token.new_symbol(.star, self.cursor);
+        }
+
+        const next = self.peek();
+        switch (next) {
+            '=' => {
+                _ = self.pop();
+                return Token.new_symbol(.star_equal, self.cursor);
+            },
+            else => return Token.new_symbol(.star, self.cursor),
         }
     }
 

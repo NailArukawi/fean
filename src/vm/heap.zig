@@ -127,15 +127,8 @@ pub const Block = struct {
             actual_size = closest_pow_2_greater(actual_size);
         }
 
-        var mem_slice = try allocator.alloc(u8, actual_size);
-        var i: usize = 0;
-        while (i < actual_size) {
-            mem_slice[i] = 0;
-            i += 1;
-        }
-
         return @This(){
-            .ptr = mem_slice.ptr,
+            .ptr = (try allocator.alloc(u8, actual_size)).ptr,
             .size = size,
         };
     }
