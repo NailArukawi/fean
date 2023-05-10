@@ -51,5 +51,6 @@ fn time(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
     } else {
         const delta = std.time.nanoTimestamp() - time_stamp.?;
         std.debug.print("Time elapsed: {}ns \n", .{delta});
+        time_stamp = null;
     }
 }

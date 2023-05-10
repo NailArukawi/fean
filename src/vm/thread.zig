@@ -128,19 +128,19 @@ pub const Thread = struct {
         while (true) {
             const opcode: Opcode = self.chunk.next_op(&self.ip);
             switch (opcode.op) {
-                .no_op => continue,
-                .ret => return,
+                inline .no_op => continue,
+                inline .ret => return,
                 // todo
-                .dive => {
+                inline .dive => {
                     self.depth += 1;
                     self.reg_to_top() catch unreachable;
                 },
                 // todo
-                .ascend => {
+                inline .ascend => {
                     self.depth -= 1;
                     self.reg_to_top() catch unreachable;
                 },
-                .call_extern => {
+                inline .call_extern => {
                     const result = opcode.a();
                     const arg_start = opcode.b();
                     const callee = opcode.c();
@@ -178,27 +178,27 @@ pub const Thread = struct {
                 //},
 
                 // Memory
-                .load_true => {
+                inline .load_true => {
                     const dest = opcode.a();
                     self.register[dest] = Item.from(bool, true);
                 },
-                .load_false => {
+                inline .load_false => {
                     const dest = opcode.a();
                     self.register[dest] = Item.from(bool, false);
                 },
-                .load_literal => {
+                inline .load_literal => {
                     const a = opcode.a();
                     const y = opcode.y();
                     self.register[a] = self.load_literal(y);
                 },
-                .load_global => {
+                inline .load_global => {
                     const name_register = opcode.a();
                     const name: Item = self.register[name_register];
                     const load_register = opcode.b();
                     const value = self.get_global(name);
                     self.register[load_register] = value;
                 },
-                .store_global => {
+                inline .store_global => {
                     const name_register = opcode.b();
                     const value_register = opcode.a();
                     const value = self.register[value_register];
@@ -206,291 +206,291 @@ pub const Thread = struct {
                     self.set_global(name, value) catch unreachable;
                 },
                 // todo copy obj bit
-                .get_upvalue => {
+                inline .get_upvalue => {
                     const a = opcode.a();
                     const y = opcode.y();
                     self.register[a] = self.stack.inner[y];
                 },
                 // todo copy obj bit
-                .set_upvalue => {
+                inline .set_upvalue => {
                     const a = opcode.a();
                     const y = opcode.y();
                     self.stack.inner[y] = self.register[a];
                 },
                 // todo copy obj bit
-                .copy => {
+                inline .copy => {
                     const result = opcode.a();
                     const value = opcode.b();
                     self.register[result] = self.register[value];
                 },
 
                 // Arithmetic
-                .add_i64 => {
+                inline .add_i64 => {
                     const b = self.register[opcode.b()].i64;
                     const c = self.register[opcode.c()].i64;
                     self.register[opcode.a()] = Item.from(i64, b + c);
                 },
-                .sub_i64 => {
+                inline .sub_i64 => {
                     const b = self.register[opcode.b()].i64;
                     const c = self.register[opcode.c()].i64;
                     self.register[opcode.a()] = Item.from(i64, b - c);
                 },
-                .mul_i64 => {
+                inline .mul_i64 => {
                     const b = self.register[opcode.b()].i64;
                     const c = self.register[opcode.c()].i64;
                     self.register[opcode.a()] = Item.from(i64, b * c);
                 },
-                .div_i64 => {
+                inline .div_i64 => {
                     const b = self.register[opcode.b()].i64;
                     const c = self.register[opcode.c()].i64;
                     self.register[opcode.a()] = Item.from(i64, @divExact(b, c));
                 },
-                .add_i32 => {
+                inline .add_i32 => {
                     const b = self.register[opcode.b()].i32;
                     const c = self.register[opcode.c()].i32;
                     self.register[opcode.a()] = Item.from(i32, b + c);
                 },
-                .sub_i32 => {
+                inline .sub_i32 => {
                     const b = self.register[opcode.b()].i32;
                     const c = self.register[opcode.c()].i32;
                     self.register[opcode.a()] = Item.from(i32, b - c);
                 },
-                .mul_i32 => {
+                inline .mul_i32 => {
                     const b = self.register[opcode.b()].i32;
                     const c = self.register[opcode.c()].i32;
                     self.register[opcode.a()] = Item.from(i32, b * c);
                 },
-                .div_i32 => {
+                inline .div_i32 => {
                     const b = self.register[opcode.b()].i32;
                     const c = self.register[opcode.c()].i32;
                     self.register[opcode.a()] = Item.from(i32, @divExact(b, c));
                 },
-                .add_i16 => {
+                inline .add_i16 => {
                     const b = self.register[opcode.b()].i16;
                     const c = self.register[opcode.c()].i16;
                     self.register[opcode.a()] = Item.from(i16, b + c);
                 },
-                .sub_i16 => {
+                inline .sub_i16 => {
                     const b = self.register[opcode.b()].i16;
                     const c = self.register[opcode.c()].i16;
                     self.register[opcode.a()] = Item.from(i16, b - c);
                 },
-                .mul_i16 => {
+                inline .mul_i16 => {
                     const b = self.register[opcode.b()].i16;
                     const c = self.register[opcode.c()].i16;
                     self.register[opcode.a()] = Item.from(i16, b * c);
                 },
-                .div_i16 => {
+                inline .div_i16 => {
                     const b = self.register[opcode.b()].i16;
                     const c = self.register[opcode.c()].i16;
                     self.register[opcode.a()] = Item.from(i16, @divExact(b, c));
                 },
-                .add_i8 => {
+                inline .add_i8 => {
                     const b = self.register[opcode.b()].i8;
                     const c = self.register[opcode.c()].i8;
                     self.register[opcode.a()] = Item.from(i8, b + c);
                 },
-                .sub_i8 => {
+                inline .sub_i8 => {
                     const b = self.register[opcode.b()].i8;
                     const c = self.register[opcode.c()].i8;
                     self.register[opcode.a()] = Item.from(i8, b - c);
                 },
-                .mul_i8 => {
+                inline .mul_i8 => {
                     const b = self.register[opcode.b()].i8;
                     const c = self.register[opcode.c()].i8;
                     self.register[opcode.a()] = Item.from(i8, b * c);
                 },
-                .div_i8 => {
+                inline .div_i8 => {
                     const b = self.register[opcode.b()].i8;
                     const c = self.register[opcode.c()].i8;
                     self.register[opcode.a()] = Item.from(i8, @divExact(b, c));
                 },
 
-                .add_u64 => {
+                inline .add_u64 => {
                     const b = self.register[opcode.b()].u64;
                     const c = self.register[opcode.c()].u64;
                     self.register[opcode.a()] = Item.from(u64, b + c);
                 },
-                .sub_u64 => {
+                inline .sub_u64 => {
                     const b = self.register[opcode.b()].u64;
                     const c = self.register[opcode.c()].u64;
                     self.register[opcode.a()] = Item.from(u64, b - c);
                 },
-                .mul_u64 => {
+                inline .mul_u64 => {
                     const b = self.register[opcode.b()].u64;
                     const c = self.register[opcode.c()].u64;
                     self.register[opcode.a()] = Item.from(u64, b * c);
                 },
-                .div_u64 => {
+                inline .div_u64 => {
                     const b = self.register[opcode.b()].u64;
                     const c = self.register[opcode.c()].u64;
                     self.register[opcode.a()] = Item.from(u64, b / c);
                 },
-                .add_u32 => {
+                inline .add_u32 => {
                     const b = self.register[opcode.b()].u32;
                     const c = self.register[opcode.c()].u32;
                     self.register[opcode.a()] = Item.from(u32, b + c);
                 },
-                .sub_u32 => {
+                inline .sub_u32 => {
                     const b = self.register[opcode.b()].u32;
                     const c = self.register[opcode.c()].u32;
                     self.register[opcode.a()] = Item.from(u32, b - c);
                 },
-                .mul_u32 => {
+                inline .mul_u32 => {
                     const b = self.register[opcode.b()].u32;
                     const c = self.register[opcode.c()].u32;
                     self.register[opcode.a()] = Item.from(u32, b * c);
                 },
-                .div_u32 => {
+                inline .div_u32 => {
                     const b = self.register[opcode.b()].u32;
                     const c = self.register[opcode.c()].u32;
                     self.register[opcode.a()] = Item.from(u32, b / c);
                 },
-                .add_u16 => {
+                inline .add_u16 => {
                     const b = self.register[opcode.b()].u16;
                     const c = self.register[opcode.c()].u16;
                     self.register[opcode.a()] = Item.from(u16, b + c);
                 },
-                .sub_u16 => {
+                inline .sub_u16 => {
                     const b = self.register[opcode.b()].u16;
                     const c = self.register[opcode.c()].u16;
                     self.register[opcode.a()] = Item.from(u16, b - c);
                 },
-                .mul_u16 => {
+                inline .mul_u16 => {
                     const b = self.register[opcode.b()].u16;
                     const c = self.register[opcode.c()].u16;
                     self.register[opcode.a()] = Item.from(u16, b * c);
                 },
-                .div_u16 => {
+                inline .div_u16 => {
                     const b = self.register[opcode.b()].u16;
                     const c = self.register[opcode.c()].u16;
                     self.register[opcode.a()] = Item.from(u16, b / c);
                 },
-                .add_u8 => {
+                inline .add_u8 => {
                     const b = self.register[opcode.b()].u8;
                     const c = self.register[opcode.c()].u8;
                     self.register[opcode.a()] = Item.from(u8, b + c);
                 },
-                .sub_u8 => {
+                inline .sub_u8 => {
                     const b = self.register[opcode.b()].u8;
                     const c = self.register[opcode.c()].u8;
                     self.register[opcode.a()] = Item.from(u8, b - c);
                 },
-                .mul_u8 => {
+                inline .mul_u8 => {
                     const b = self.register[opcode.b()].u8;
                     const c = self.register[opcode.c()].u8;
                     self.register[opcode.a()] = Item.from(u8, b * c);
                 },
-                .div_u8 => {
+                inline .div_u8 => {
                     const b = self.register[opcode.b()].u8;
                     const c = self.register[opcode.c()].u8;
                     self.register[opcode.a()] = Item.from(u8, b / c);
                 },
 
-                .add_f64 => {
+                inline .add_f64 => {
                     const b = self.register[opcode.b()].f64;
                     const c = self.register[opcode.c()].f64;
                     self.register[opcode.a()] = Item.from(f64, b + c);
                 },
-                .sub_f64 => {
+                inline .sub_f64 => {
                     const b = self.register[opcode.b()].f64;
                     const c = self.register[opcode.c()].f64;
                     self.register[opcode.a()] = Item.from(f64, b - c);
                 },
-                .mul_f64 => {
+                inline .mul_f64 => {
                     const b = self.register[opcode.b()].f64;
                     const c = self.register[opcode.c()].f64;
                     self.register[opcode.a()] = Item.from(f64, b * c);
                 },
-                .div_f64 => {
+                inline .div_f64 => {
                     const b = self.register[opcode.b()].f64;
                     const c = self.register[opcode.c()].f64;
                     self.register[opcode.a()] = Item.from(f64, b / c);
                 },
 
-                .add_f32 => {
+                inline .add_f32 => {
                     const b = self.register[opcode.b()].f32;
                     const c = self.register[opcode.c()].f32;
                     self.register[opcode.a()] = Item.from(f32, b + c);
                 },
-                .sub_f32 => {
+                inline .sub_f32 => {
                     const b = self.register[opcode.b()].f32;
                     const c = self.register[opcode.c()].f32;
                     self.register[opcode.a()] = Item.from(f32, b - c);
                 },
-                .mul_f32 => {
+                inline .mul_f32 => {
                     const b = self.register[opcode.b()].f32;
                     const c = self.register[opcode.c()].f32;
                     self.register[opcode.a()] = Item.from(f32, b * c);
                 },
-                .div_f32 => {
+                inline .div_f32 => {
                     const b = self.register[opcode.b()].f32;
                     const c = self.register[opcode.c()].f32;
                     self.register[opcode.a()] = Item.from(f32, b / c);
                 },
 
                 // Control flow
-                .less_than_u64 => {
+                inline .less_than_u64 => {
                     const b = self.register[opcode.b()].u64;
                     const c = self.register[opcode.c()].u64;
                     self.register[opcode.a()] = Item.from(bool, b < c);
                 },
-                .less_than_u32 => {
+                inline .less_than_u32 => {
                     const b = self.register[opcode.b()].u64;
                     const c = self.register[opcode.c()].u64;
                     self.register[opcode.a()] = Item.from(bool, b < c);
                 },
-                .less_than_i64 => {
+                inline .less_than_i64 => {
                     const b = self.register[opcode.b()].i64;
                     const c = self.register[opcode.c()].i64;
                     self.register[opcode.a()] = Item.from(bool, b < c);
                 },
-                .less_than_i32 => {
+                inline .less_than_i32 => {
                     const b = self.register[opcode.b()].i64;
                     const c = self.register[opcode.c()].i64;
                     self.register[opcode.a()] = Item.from(bool, b < c);
                 },
-                .less_than_f64 => {
+                inline .less_than_f64 => {
                     const b = self.register[opcode.b()].f64;
                     const c = self.register[opcode.c()].f64;
                     self.register[opcode.a()] = Item.from(bool, b < c);
                 },
-                .less_than_f32 => {
+                inline .less_than_f32 => {
                     const b = self.register[opcode.b()].f32;
                     const c = self.register[opcode.c()].f32;
                     self.register[opcode.a()] = Item.from(bool, b < c);
                 },
-                .less_equal_u64 => {
+                inline .less_equal_u64 => {
                     const b = self.register[opcode.b()].u64;
                     const c = self.register[opcode.c()].u64;
                     self.register[opcode.a()] = Item.from(bool, b < c or b == c);
                 },
-                .less_equal_u32 => {
+                inline .less_equal_u32 => {
                     const b = self.register[opcode.b()].u32;
                     const c = self.register[opcode.c()].u32;
                     self.register[opcode.a()] = Item.from(bool, b < c or b == c);
                 },
-                .less_equal_i64 => {
+                inline .less_equal_i64 => {
                     const b = self.register[opcode.b()].i64;
                     const c = self.register[opcode.c()].i64;
                     self.register[opcode.a()] = Item.from(bool, b < c or b == c);
                 },
-                .less_equal_i32 => {
+                inline .less_equal_i32 => {
                     const b = self.register[opcode.b()].i32;
                     const c = self.register[opcode.c()].i32;
                     self.register[opcode.a()] = Item.from(bool, b < c or b == c);
                 },
-                .less_equal_f64 => {
+                inline .less_equal_f64 => {
                     const b = self.register[opcode.b()].f64;
                     const c = self.register[opcode.c()].f64;
                     self.register[opcode.a()] = Item.from(bool, b < c or b == c);
                 },
-                .less_equal_f32 => {
+                inline .less_equal_f32 => {
                     const b = self.register[opcode.b()].f32;
                     const c = self.register[opcode.c()].f32;
                     self.register[opcode.a()] = Item.from(bool, b < c or b == c);
                 },
-                .not => {
+                inline .not => {
                     const dest = opcode.a();
                     const source = opcode.b();
 
@@ -498,7 +498,7 @@ pub const Thread = struct {
 
                     self.register[dest] = Item.from(bool, inverse);
                 },
-                .if_jmp => {
+                inline .if_jmp => {
                     const a = self.register[opcode.a()].bool;
                     const offset: i22 = @bitCast(i22, opcode.y());
 
@@ -507,7 +507,7 @@ pub const Thread = struct {
                         self.ip = @intCast(usize, change);
                     }
                 },
-                .jmp => {
+                inline .jmp => {
                     // zig is 1 filling alot of the bits on the git version.
                     // todo fix
                     const offset: i32 = @bitCast(i32, opcode.x());
@@ -515,8 +515,8 @@ pub const Thread = struct {
                     self.ip = @intCast(usize, change);
                 },
 
-                .extended => return,
-                else => {
+                inline .extended => return,
+                inline else => {
                     std.debug.print("[THREAD]: ({s}) not implimented.\n", .{@tagName(opcode.op)});
                     unreachable;
                 },

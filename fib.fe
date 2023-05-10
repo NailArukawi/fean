@@ -3,35 +3,37 @@ time : Fn : extern fn() -> i64;
 
 time();
 
-// fibonacci
-a : i64 = 1;
-b : i64 = 0;
-alternate : bool = false;
-
-// set to the desired n-th fibonacci number
-fib_count : i64 = 92;
-
-i : i64 = 1;
-while (i < fib_count) {
-    if (alternate) {
-        a = a + b;
-        alternate = false;
-    }
-    else {
-        b = a + b;
-        alternate = true;
-    }
-    
-    i = i + 1;
-}
-
 result : i64 = 0;
 
-if (a < b) {
-    result = b;
-}
-else {
-    result = a;
+{
+    // fibonacci
+    a : i64 = 1;
+    b : i64 = 0;
+    alternate : bool = false;
+
+    // set to the desired n-th fibonacci number
+    fib_count : i64 = 92;
+
+    i : i64 = 1;
+    while (i < fib_count) {
+        if (alternate) {
+            a = a + b;
+            alternate = false;
+        }
+        else {
+            b = a + b;
+            alternate = true;
+        }
+        
+        i = i + 1;
+    }
+
+    if (a < b) {
+        result = b;
+    }
+    else {
+        result = a;
+    }
 }
 
 time();

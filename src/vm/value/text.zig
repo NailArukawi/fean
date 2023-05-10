@@ -8,6 +8,8 @@ const Object = @import("../mod.zig").Object;
 
 const Item = @import("item.zig").Item;
 
+pub const DEBUG = std.debug.runtime_safety;
+
 pub const DEFAULT_TEXT_SIZE: usize = 32;
 
 pub const Text = struct {
@@ -66,9 +68,15 @@ pub const Text = struct {
 
         var hash_result: u64 = 14695981039346656037;
         var i: usize = 0;
+
+        // TODO idk if this is faster
         while (i < self.len) : (i += step) {
             hash_result ^= string[i];
-            hash_result = @mulWithOverflow(hash_result, 1099511628211)[0];
+            if (DEBUG) {
+                hash_result = @mulWithOverflow(hash_result, 1099511628211)[0];
+            } else {
+                hash_result = hash_result * 1099511628211;
+            }
         }
 
         return hash_result;

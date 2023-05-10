@@ -108,6 +108,10 @@ pub const Scanner = struct {
             }
         }
 
+        if (self.is_eos()) {
+            return Token.new_symbol(.EOS, self.cursor);
+        }
+
         if (self.is_comment()) {
             while (self.peek() != '\n') {
                 _ = self.pop();

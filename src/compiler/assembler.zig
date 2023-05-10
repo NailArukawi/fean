@@ -213,12 +213,12 @@ pub const Assembler = struct {
             },
             .set_upvalue => |load| {
                 var opcode = Opcode.new();
-                opcode.op = Op.get_upvalue;
+                opcode.op = Op.set_upvalue;
 
-                const storee = load.result.register();
+                const storee = load.a.register();
                 opcode.set_a(storee);
 
-                const real = load.a.upvalue();
+                const real = load.result.upvalue();
                 opcode.set_y(@intCast(u22, real));
 
                 try self.push_op(opcode);

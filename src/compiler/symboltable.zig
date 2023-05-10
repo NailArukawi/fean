@@ -48,4 +48,8 @@ pub const SymbolTable = struct {
         self.next = installee;
         return installee;
     }
+
+    pub fn stack_binding(self: *@This()) usize {
+        return (self.depth * 1024) + self.binding;
+    }
 };

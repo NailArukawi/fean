@@ -1113,7 +1113,27 @@ pub const Compiler = struct {
             // todo upvalues
             if (self.depth != symbol.depth) {
                 // we have an upvalue
-                unreachable;
+                var local = scope.get_temp().?;
+                var local_moved = false;
+                var gen_result = try self.generate(assignment.value, scope, local, null);
+                defer {
+                    if (!local_moved) {
+                        scope.drop_temp();
+                    }
+                }
+
+                if (gen_result != null) {
+                    local_moved = true;
+                    scope.drop_temp();
+                    local = gen_result.?;
+                }
+
+                const result = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+
+                try scope.push_instr(.{ .set_upvalue = .{
+                    .a = local,
+                    .result = result,
+                } });
             } else {
                 const result = Address.new_register(symbol.binding);
                 _ = try self.generate(assignment.value, scope, result, null);
@@ -1427,7 +1447,7 @@ pub const Compiler = struct {
                         // we have an upvalue
                         const zamn = symbol.?;
 
-                        const real = @intCast(u56, (zamn.depth * 1024) + zamn.binding);
+                        const real = @intCast(u56, zamn.stack_binding());
                         const real_address = Address.new_upvalue(real);
 
                         try scope.push_instr(.{ .get_upvalue = .{
