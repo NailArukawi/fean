@@ -216,6 +216,30 @@ pub const Instr = union(enum) {
     mul_f32: Arithmetic,
     div_f32: Arithmetic,
 
+    inc_i64: Address,
+    inc_u64: Address,
+    inc_i32: Address,
+    inc_u32: Address,
+    inc_i16: Address,
+    inc_u16: Address,
+    inc_i8: Address,
+    inc_u8: Address,
+
+    inc_f64: Address,
+    inc_f32: Address,
+
+    dec_i64: Address,
+    dec_u64: Address,
+    dec_i32: Address,
+    dec_u32: Address,
+    dec_i16: Address,
+    dec_u16: Address,
+    dec_i8: Address,
+    dec_u8: Address,
+
+    dec_f64: Address,
+    dec_f32: Address,
+
     // conditional
     // Control flow (21)
     less_than_u64: Arithmetic,
@@ -345,6 +369,14 @@ pub const Instr = union(enum) {
                 return std.fmt.bufPrint(buffer, "{s}:\t{s} = {s}, {s}", .{ @tagName(self), result, adress_a, adress_b });
             },
 
+            .inc_i64, .inc_u64, .inc_i32, .inc_u32, .inc_i16, .inc_u16, .inc_i8, .inc_u8, .inc_f64, .inc_f32 => |to_inc| {
+                return std.fmt.bufPrint(buffer, "{s}:\tstack[{}]++", .{ @tagName(self), to_inc.upvalue() });
+            },
+
+            .dec_i64, .dec_u64, .dec_i32, .dec_u32, .dec_i16, .dec_u16, .dec_i8, .dec_u8, .dec_f64, .dec_f32 => |to_dec| {
+                return std.fmt.bufPrint(buffer, "{s}:\tstack[{}]--", .{ @tagName(self), to_dec.upvalue() });
+            },
+
             // Control flow (21)
             .less_than_u64, .less_than_u32, .less_than_u16, .less_than_u8, .less_than_i64, .less_than_i32, .less_than_i16, .less_than_i8, .less_than_f64, .less_than_f32 => |lt| {
                 const nested_size: usize = 32;
@@ -427,6 +459,8 @@ pub const IRBlock = struct {
     // meta
     registers: u10 = 0,
     temporaries: u10 = 0,
+
+    inlining: bool = false,
 
     pub fn create(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable) !*@This() {
         var result = try allocator.create(@This());
@@ -759,6 +793,20 @@ pub const Scope = union(enum) {
             .block => |block| return block.get_reg(),
         }
     }
+
+    pub fn temp_count(self: @This()) u10 {
+        switch (self) {
+            .head => |head| return head.temporaries,
+            .block => |block| return block.temporaries,
+        }
+    }
+
+    pub fn reg_count(self: @This()) u10 {
+        switch (self) {
+            .head => |head| return head.registers,
+            .block => |block| return block.registers,
+        }
+    }
 };
 
 pub const Compiler = struct {
@@ -829,18 +877,24 @@ pub const Compiler = struct {
     fn generate(self: *@This(), node: *Node, scope: Scope, result: ?Address, extra: ?Address) anyerror!?Address {
         switch (node.*) {
             .scope => |s| {
+                // tod make sure this is ok
+                var to_inline = scope != .head;
+
                 // todo maybe allow scoped typing
                 var block = try Scope.create_block(self.allocator, scope, s.symbols);
 
-                // todo maybe block is small, no need to dive.
-                try self.dive(scope);
+                if (to_inline) {
+                    block.block.inlining = true;
+                    block.block.registers = scope.reg_count();
+                    block.block.temporaries = scope.temp_count();
+                } else try self.dive(scope);
 
                 for (s.statments.?) |stmnt| {
                     _ = try self.generate(stmnt, block, null, null);
                 }
 
                 try scope.push_instr(Instr{ .block = block.block });
-                try self.ascend(scope);
+                if (!to_inline) try self.ascend(scope);
             },
             .variable => {
                 if (scope.is_head()) {
@@ -930,7 +984,6 @@ pub const Compiler = struct {
                     // todo make it look for kind
                     const address = if (result != null) result.? else scope.get_temp().?;
                     defer if (result == null) scope.drop_temp();
-                    // we are nested
 
                     var tmp = scope.get_temp().?;
                     var tmp_moved = false;
@@ -950,6 +1003,66 @@ pub const Compiler = struct {
                     }
 
                     try scope.push_instr(Instr{ .not = .{ .source = tmp, .dest = address } });
+                    return null;
+                } else if (op == .plus_plus) {
+                    const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
+                    const binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+                    // todo we should use kind everywhere but no methods so no clue.
+                    var kind_name: []const u8 = "";
+                    switch (symbol.kind.?) {
+                        .resolved => |k| kind_name = k.name,
+                        .unresolved => |n| kind_name = n,
+                    }
+
+                    if (mem.eql(u8, kind_name, "u64")) {
+                        try scope.push_instr(Instr{ .inc_u64 = binding });
+                    } else if (mem.eql(u8, kind_name, "i64")) {
+                        try scope.push_instr(Instr{ .inc_i64 = binding });
+                    } else if (mem.eql(u8, kind_name, "u32")) {
+                        try scope.push_instr(Instr{ .inc_u32 = binding });
+                    } else if (mem.eql(u8, kind_name, "i32")) {
+                        try scope.push_instr(Instr{ .inc_i32 = binding });
+                    } else if (mem.eql(u8, kind_name, "u16")) {
+                        try scope.push_instr(Instr{ .inc_u16 = binding });
+                    } else if (mem.eql(u8, kind_name, "i16")) {
+                        try scope.push_instr(Instr{ .inc_i16 = binding });
+                    } else if (mem.eql(u8, kind_name, "u8")) {
+                        try scope.push_instr(Instr{ .inc_u8 = binding });
+                    } else if (mem.eql(u8, kind_name, "f64")) {
+                        try scope.push_instr(Instr{ .inc_f64 = binding });
+                    } else if (mem.eql(u8, kind_name, "f32")) {
+                        try scope.push_instr(Instr{ .inc_f32 = binding });
+                    } else unreachable; // todo add custom inc methods
+                    return null;
+                } else if (op == .minus_minus) {
+                    const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
+                    const binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+                    // todo we should use kind everywhere but no methods so no clue.
+                    var kind_name: []const u8 = "";
+                    switch (symbol.kind.?) {
+                        .resolved => |k| kind_name = k.name,
+                        .unresolved => |n| kind_name = n,
+                    }
+
+                    if (mem.eql(u8, kind_name, "u64")) {
+                        try scope.push_instr(Instr{ .dec_u64 = binding });
+                    } else if (mem.eql(u8, kind_name, "i64")) {
+                        try scope.push_instr(Instr{ .dec_i64 = binding });
+                    } else if (mem.eql(u8, kind_name, "u32")) {
+                        try scope.push_instr(Instr{ .dec_u32 = binding });
+                    } else if (mem.eql(u8, kind_name, "i32")) {
+                        try scope.push_instr(Instr{ .dec_i32 = binding });
+                    } else if (mem.eql(u8, kind_name, "u16")) {
+                        try scope.push_instr(Instr{ .dec_u16 = binding });
+                    } else if (mem.eql(u8, kind_name, "i16")) {
+                        try scope.push_instr(Instr{ .dec_i16 = binding });
+                    } else if (mem.eql(u8, kind_name, "u8")) {
+                        try scope.push_instr(Instr{ .dec_u8 = binding });
+                    } else if (mem.eql(u8, kind_name, "f64")) {
+                        try scope.push_instr(Instr{ .dec_f64 = binding });
+                    } else if (mem.eql(u8, kind_name, "f32")) {
+                        try scope.push_instr(Instr{ .dec_f32 = binding });
+                    } else unreachable; // todo add custom dec methods
                     return null;
                 }
                 unreachable;

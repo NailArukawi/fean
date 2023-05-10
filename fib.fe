@@ -18,7 +18,7 @@ time : Fn : extern fn() -> i64;
         else b += a;
 
         alternate = !alternate;
-        i += 1;
+        i++;
     }
 
     time();

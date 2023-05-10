@@ -174,6 +174,10 @@ pub const Scanner = struct {
 
         const next = self.peek();
         switch (next) {
+            '+' => {
+                _ = self.pop();
+                return Token.new_symbol(.plus_plus, self.cursor);
+            },
             '=' => {
                 _ = self.pop();
                 return Token.new_symbol(.plus_equal, self.cursor);
@@ -189,6 +193,10 @@ pub const Scanner = struct {
 
         const next = self.peek();
         switch (next) {
+            '-' => {
+                _ = self.pop();
+                return Token.new_symbol(.minus_minus, self.cursor);
+            },
             '=' => {
                 _ = self.pop();
                 return Token.new_symbol(.minus_equal, self.cursor);

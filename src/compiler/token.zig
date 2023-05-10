@@ -122,6 +122,9 @@ pub const Symbol = enum {
     star,
     star_equal,
 
+    minus_minus,
+    plus_plus,
+
     bang,
     bang_equal,
     equal,
@@ -188,6 +191,9 @@ pub const TokenKind = enum {
     star,
     star_equal,
 
+    minus_minus,
+    plus_plus,
+
     bang,
     bang_equal,
     equal,
@@ -247,6 +253,8 @@ pub const TokenKind = enum {
                     .slash_equal => return @This().slash_equal,
                     .star => return @This().star,
                     .star_equal => return @This().star_equal,
+                    .minus_minus => return @This().minus_minus,
+                    .plus_plus => return @This().plus_plus,
                     .bang => return @This().bang,
                     .bang_equal => return @This().bang_equal,
                     .equal => return @This().equal,
@@ -313,6 +321,8 @@ pub const TokenKind = enum {
             .slash_equal => return TokenData.new_symbol(.slash_equal, Span.default()),
             .star => return TokenData.new_symbol(.star, Span.default()),
             .star_equal => return TokenData.new_symbol(.star_equal, Span.default()),
+            .minus_minus => return TokenData.new_symbol(.minus_minus, Span.default()),
+            .plus_plus => return TokenData.new_symbol(.plus_plus, Span.default()),
             .bang => return TokenData.new_symbol(.bang, Span.default()),
             .bang_equal => return TokenData.new_symbol(.bang_equal, Span.default()),
             .equal => return TokenData.new_symbol(.equal, Span.default()),

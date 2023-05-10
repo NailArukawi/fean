@@ -393,8 +393,23 @@ pub const Parser = struct {
         ) {
             return self.expression_assignment(scope);
         }
+        // identifier++ or identifier--
+        if (self.check(.identifier) // X
+        and (self.check_next(.plus_plus) or self.check_next(.minus_minus)) // ++ or --
+        ) {
+            return self.expression_inc_dec(scope);
+        }
 
         return self.equality(scope);
+    }
+
+    fn expression_inc_dec(self: *@This(), scope: *Node) *Node {
+        var value = self.primary(scope);
+        const operator = self.pop().?; // ++ or --
+
+        var result = self.allocator.create(Node) catch unreachable;
+        result.* = Node{ .unary_expression = .{ .op = operator, .value = value } };
+        return result;
     }
 
     // todo lookup symbol

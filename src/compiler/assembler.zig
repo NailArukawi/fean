@@ -309,6 +309,190 @@ pub const Assembler = struct {
             .mul_f32 => unreachable,
             .div_f32 => unreachable,
 
+            .inc_i64 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_i64;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_u64 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_u64;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_i32 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_i32;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_u32 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_u32;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_i16 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_i16;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_u16 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_u16;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_i8 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_i8;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_u8 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_u8;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+
+            .inc_f64 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_f64;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .inc_f32 => |inc| {
+                var opcode = Opcode.new();
+                opcode.op = Op.inc_f32;
+
+                const result = @intCast(u32, inc.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+
+            .dec_i64 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_i64;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_u64 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_u64;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_i32 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_i32;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_u32 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_u32;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_i16 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_i16;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_u16 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_u16;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_i8 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_i8;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_u8 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_u8;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+
+            .dec_f64 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_f64;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+            .dec_f32 => |dec| {
+                var opcode = Opcode.new();
+                opcode.op = Op.dec_f32;
+
+                const result = @intCast(u32, dec.upvalue());
+                opcode.set_x(result);
+
+                try self.push_op(opcode);
+            },
+
             // conditional
             .less_than_i64 => |arithmetic| {
                 var opcode = Opcode.new();

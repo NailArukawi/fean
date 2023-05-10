@@ -428,6 +428,33 @@ pub const Thread = struct {
                     self.register[opcode.a()] = Item.from(f32, b / c);
                 },
 
+                .inc_i64 => {
+                    const x = opcode.x();
+                    self.stack.inner[x].i64 += 1;
+                },
+                .inc_u64 => unreachable,
+                .inc_i32 => unreachable,
+                .inc_u32 => unreachable,
+                .inc_i16 => unreachable,
+                .inc_u16 => unreachable,
+                .inc_i8 => unreachable,
+                .inc_u8 => unreachable,
+
+                .inc_f64 => unreachable,
+                .inc_f32 => unreachable,
+
+                .dec_i64 => unreachable,
+                .dec_u64 => unreachable,
+                .dec_i32 => unreachable,
+                .dec_u32 => unreachable,
+                .dec_i16 => unreachable,
+                .dec_u16 => unreachable,
+                .dec_i8 => unreachable,
+                .dec_u8 => unreachable,
+
+                .dec_f64 => unreachable,
+                .dec_f32 => unreachable,
+
                 // Control flow
                 .less_than_u64 => {
                     const b = self.register[opcode.b()].u64;

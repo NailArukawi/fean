@@ -1,6 +1,6 @@
 const std = @import("std");
 
-// 81|256 used
+// 101|256 used
 pub const Op = enum(u8) {
     // Misc (9)
     no_op = 0,
@@ -24,7 +24,7 @@ pub const Op = enum(u8) {
     set_upvalue,
     copy,
 
-    // Arithmetic (40)
+    // Arithmetic (60)
     add_u64,
     sub_u64,
     mul_u64,
@@ -41,7 +41,6 @@ pub const Op = enum(u8) {
     sub_u8,
     mul_u8,
     div_u8,
-
     add_i64,
     sub_i64,
     mul_i64,
@@ -68,6 +67,30 @@ pub const Op = enum(u8) {
     sub_f32,
     mul_f32,
     div_f32,
+
+    inc_i64,
+    inc_u64,
+    inc_i32,
+    inc_u32,
+    inc_i16,
+    inc_u16,
+    inc_i8,
+    inc_u8,
+
+    inc_f64,
+    inc_f32,
+
+    dec_i64,
+    dec_u64,
+    dec_i32,
+    dec_u32,
+    dec_i16,
+    dec_u16,
+    dec_i8,
+    dec_u8,
+
+    dec_f64,
+    dec_f32,
 
     // Control flow (21)
     less_than_u64,
