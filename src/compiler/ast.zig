@@ -102,7 +102,7 @@ pub const Node = union(enum) {
                     to_insert.variable.symbol = result;
                 },
                 .constant => {
-                    to_insert.variable.symbol = result;
+                    to_insert.constant.symbol = result;
                 },
                 else => unreachable,
             }
@@ -186,6 +186,7 @@ pub const Node = union(enum) {
 pub const StatmentKind = enum {
     Expression,
     Return,
+    ReturnRoot,
 };
 
 fn SymbolKind_helper(kind: ?Kind) ?SymbolKind {

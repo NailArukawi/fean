@@ -9,18 +9,19 @@ const Dict = @import("dict.zig").Dict;
 const Text = @import("text.zig").Text;
 
 pub const CallFrame = struct {
-    function: ?*InternalFunction,
+    function: *Chunk,
     ip: usize,
+    base: usize,
 };
 
-pub const Function = union {
+pub const Function = extern union {
     internal: InternalFunction,
     external: ExternFunction,
 };
 
-pub const InternalFunction = struct { arity: u8, result: bool, body: *Chunk };
+pub const InternalFunction = extern struct { arity: u8, result: bool, body: *Chunk };
 
-pub const ExternFunction = struct {
+pub const ExternFunction = extern struct {
     arity: u8,
     result: bool,
     body: *const fn (args: []Item, result: ?*Item) void,

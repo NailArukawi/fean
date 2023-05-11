@@ -5,6 +5,7 @@ pub const parser = @import("parser.zig");
 pub const Parser = @import("parser.zig").Parser;
 pub const compiler = @import("compiler.zig");
 pub const IR = compiler.IR;
+pub const IRBlock = compiler.IRBlock;
 pub const Instr = compiler.Instr;
 pub const Address = compiler.Address;
 pub const CompilerMeta = compiler.CompilerMeta;

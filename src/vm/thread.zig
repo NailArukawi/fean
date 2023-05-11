@@ -24,7 +24,30 @@ const CompilerMeta = @import("../compiler/mod.zig").CompilerMeta;
 const REGISTER_COUNT: usize = 1024;
 const REGISTER_STACK_DEPTH: usize = 4;
 const LITERALS_INITIAL_SIZE: usize = 256;
-const CALL_STACK_SIZE: usize = 64;
+const CALL_STACK_SIZE: usize = 32;
+
+pub const CallStack = struct {
+    inner: Stack(CallFrame),
+
+    // todo cringe
+    pub fn create(allocator: Allocator, size: usize) !@This() {
+        return @This(){
+            .inner = try Stack(CallFrame).create(allocator, size),
+        };
+    }
+
+    pub inline fn push(self: *@This(), frame: CallFrame) !void {
+        try self.inner.push(frame);
+    }
+
+    pub inline fn pop(self: *@This()) CallFrame {
+        return self.inner.pop();
+    }
+
+    pub inline fn is_bottom(self: *@This()) bool {
+        return self.inner.used == 0;
+    }
+};
 
 pub const Thread = struct {
     heap: *Heap,
@@ -40,7 +63,7 @@ pub const Thread = struct {
     obj_map: DynamicBitSet,
     stack_depth: usize,
 
-    call_stack: Stack(CallFrame),
+    call_stack: CallStack,
     chunk: *Chunk,
     ip: usize,
 
@@ -61,7 +84,7 @@ pub const Thread = struct {
         result.obj_map = try DynamicBitSet.create(allocator, result.stack.capacity);
         result.stack_depth = 0;
 
-        result.call_stack = try Stack(CallFrame).create(allocator, CALL_STACK_SIZE);
+        result.call_stack = try CallStack.create(allocator, CALL_STACK_SIZE);
         result.ip = 0;
 
         result.allocator = allocator;
@@ -123,12 +146,48 @@ pub const Thread = struct {
         self.register = self.stack.inner[depth_offset..(depth_offset + 1024)].ptr;
     }
 
+    pub fn call_fn(self: *@This(), body: *Chunk) !void {
+        const frame = CallFrame{
+            .base = self.depth,
+            .function = self.chunk,
+            .ip = self.ip,
+        };
+
+        self.chunk = body;
+        self.ip = 0;
+        self.depth = self.depth + 1;
+        try self.reg_to_top();
+
+        try self.call_stack.push(frame);
+
+        return;
+    }
+
+    pub fn ret_fn(self: *@This()) !void {
+        const frame = self.call_stack.pop();
+
+        self.chunk = frame.function;
+        self.ip = frame.ip;
+        self.depth = frame.base;
+
+        try self.reg_to_top();
+
+        return;
+    }
+
     pub fn execute(self: *@This()) void {
         while (true) {
             const opcode: Opcode = self.chunk.next_op(&self.ip);
             switch (opcode.op) {
                 .no_op => continue,
-                .ret => return,
+                .ret => {
+                    const root = opcode.a() > 0;
+                    if (root or self.call_stack.is_bottom()) {
+                        return;
+                    } else {
+                        self.ret_fn() catch unreachable;
+                    }
+                },
                 // todo
                 .dive => {
                     self.depth += 1;
@@ -138,6 +197,23 @@ pub const Thread = struct {
                 .ascend => {
                     self.depth -= 1;
                     self.reg_to_top() catch unreachable;
+                },
+                .call => {
+                    const result = opcode.a();
+                    _ = result;
+                    const arg_start = opcode.b();
+                    _ = arg_start;
+                    const callee = opcode.c();
+                    const has_return = opcode.d();
+                    const function = self.register[callee].function().internal;
+
+                    if (has_return == 0) {
+                        // call extern method with no return value
+                        self.call_fn(function.body) catch unreachable;
+                    } else {
+                        // call extern method with return value
+                        self.call_fn(function.body) catch unreachable;
+                    }
                 },
                 .call_extern => {
                     const result = opcode.a();

@@ -45,6 +45,7 @@ pub const KindTable = struct {
         _ = try self.install("text", null, @sizeOf(Text), allocator);
         _ = try self.install("bool", null, @sizeOf(bool), allocator);
         _ = try self.install("Fn", null, @sizeOf(vm.Function), allocator);
+        _ = try self.install("ExternFn", null, @sizeOf(vm.Function), allocator);
         _ = try self.install("void", null, @sizeOf(void), allocator);
 
         return self;

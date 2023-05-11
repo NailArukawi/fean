@@ -12,9 +12,10 @@ pub fn Stack(comptime T: type) type {
         allocator: Allocator,
 
         pub fn create(allocator: Allocator, size: usize) !@This() {
+            const memory = try allocator.alloc(T, size);
             return @This(){
                 .allocator = allocator,
-                .inner = (try allocator.alloc(T, size)).ptr,
+                .inner = memory.ptr,
                 .used = 0,
                 .capacity = size,
             };
@@ -25,7 +26,7 @@ pub fn Stack(comptime T: type) type {
         }
 
         pub fn destroy(self: *@This()) void {
-            self.allocator.free(self.inner);
+            self.allocator.free(self.as_slice());
         }
 
         pub fn from_slice(allocator: Allocator, items: []T) !@This() {
@@ -56,10 +57,10 @@ pub fn Stack(comptime T: type) type {
             return self.inner[self.used - 1];
         }
 
-        pub inline fn pop(self: *@This()) T {
-            const pos = self.used;
+        pub fn pop(self: *@This()) T {
             self.used -= 1;
-            return self.inner[pos];
+            const result = self.inner[self.used];
+            return result;
         }
 
         pub inline fn push(self: *@This(), item: T) !void {

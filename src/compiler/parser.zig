@@ -29,12 +29,14 @@ pub const Parser = struct {
     allocator: Allocator,
     tokens: List(Token),
     cursor: usize,
+    rooted: bool = true,
 
     pub fn parse(src: []const u8, config: *FeanConfig) !AST {
         var parser = @This(){
             .allocator = config.allocator,
             .tokens = List(Token).init(config.allocator),
             .cursor = 0,
+            .rooted = true,
         };
 
         var scanner = try Scanner.new(src, config);
@@ -44,6 +46,10 @@ pub const Parser = struct {
             if (next.data == .symbol and next.data.symbol == .EOS) {
                 break;
             }
+
+            const span = next.span;
+            _ = span;
+            //std.debug.print("[{}:{}] scanned:\t{}\n", .{ span.line, span.pos, next.data });
 
             try parser.tokens.append(next);
         }
@@ -127,7 +133,7 @@ pub const Parser = struct {
                 },
             };
 
-            if (std.mem.eql(u8, result.constant.kind.unresolved, "Fn") and result.constant.value.function.is_extern) {
+            if (std.mem.eql(u8, result.constant.kind.unresolved, "ExternFn")) {
                 result.constant.value.function.body.name = result.constant.name;
             }
         } else if (self.of_kind(.equal)) {
@@ -140,7 +146,7 @@ pub const Parser = struct {
                 },
             };
 
-            if (std.mem.eql(u8, result.variable.kind.unresolved, "Fn") and result.variable.value.?.function.is_extern) {
+            if (std.mem.eql(u8, result.variable.kind.unresolved, "ExternFn")) {
                 result.variable.value.?.function.body.name = result.variable.name;
             }
         } else if (self.of_kind(.semi_colon)) {
@@ -153,7 +159,7 @@ pub const Parser = struct {
                 },
             };
 
-            if (std.mem.eql(u8, result.variable.kind.unresolved, "Fn") and result.variable.value.?.function.is_extern) {
+            if (std.mem.eql(u8, result.variable.kind.unresolved, "ExternFn")) {
                 result.variable.value.?.function.body.name = result.variable.name;
             }
         } else {
@@ -203,6 +209,14 @@ pub const Parser = struct {
     }
 
     fn statment_function(self: *@This(), is_extern: bool, scope: *Node) *Node {
+        var fn_exited_root = false;
+        if (self.rooted) {
+            fn_exited_root = true;
+            self.rooted = false;
+        }
+        defer if (fn_exited_root) {
+            self.rooted = true;
+        };
 
         // parameter body
         self.consume_kind(.paren_left, "expected fn parameters to start with a (");
@@ -224,7 +238,7 @@ pub const Parser = struct {
 
         // body
         if (!is_extern) {
-            self.check_err(.identifier, "expected a body after function\n fn() -> type {\n...\n}");
+            self.consume_kind(.curley_left, "expected a body after function\n fn() -> type {\n...\n}");
             var body = self.statment_block(scope);
 
             function.* = Node{
@@ -246,8 +260,6 @@ pub const Parser = struct {
             };
             self.consume_kind(.semi_colon, "expected extern fn to have a semicolon at the end");
         }
-
-        //self.consume_kind(.right_arrow, "fn to have a ; at the end");
 
         return function;
     }
@@ -716,6 +728,7 @@ pub const Parser = struct {
 
     fn pop(self: *@This()) ?Token {
         var result = self.peek();
+        //std.debug.print("[{}:{}] popped:\t{}\n", .{ result.?.span.line, result.?.span.pos, result.?.data });
 
         self.cursor += 1;
 

@@ -1,5 +1,11 @@
-zamn : fn : fn() -> i64 {
-    return 23;
+time : ExternFn : extern fn() -> i64;
+
+fib : Fn : fn() -> i64 {
+    return 69;
 }
 
-return zamn();
+time();
+fib();
+time();
+
+return;

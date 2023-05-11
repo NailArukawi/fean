@@ -29,6 +29,9 @@ pub const AddressKind = enum(u8) {
     global,
     temporary,
     pair,
+
+    // extra enums
+    detach,
 };
 
 pub const Address = struct {
@@ -76,6 +79,19 @@ pub const Address = struct {
         };
     }
 
+    pub inline fn new_detach() @This() {
+        return @This(){
+            .inner = @intCast(usize, 0) | (@intCast(usize, @enumToInt(AddressKind.detach)) << 56),
+        };
+    }
+
+    // unsafe, use carefully
+    pub inline fn new_raw(ptr: usize) @This() {
+        return @This(){
+            .inner = ptr,
+        };
+    }
+
     pub inline fn upvalue(self: @This()) u56 {
         return @truncate(u56, self.inner);
     }
@@ -104,6 +120,10 @@ pub const Address = struct {
         return @intToEnum(AddressKind, @truncate(u8, self.inner >> 56));
     }
 
+    pub inline fn raw(self: @This()) usize {
+        return self.inner;
+    }
+
     pub fn debug(self: @This(), buffer: []u8) ![]const u8 {
         const adress_kind = self.kind();
 
@@ -127,6 +147,7 @@ pub const Address = struct {
                 const pair_value = self.literal();
                 return std.fmt.bufPrint(buffer, "pair[{}]", .{pair_value});
             },
+            else => unreachable,
         }
     }
 };
@@ -145,8 +166,13 @@ pub const Arithmetic = struct {
 pub const Instr = union(enum) {
     // Misc
     no_op,
-    ret,
-    call,
+    ret: bool,
+    call: struct {
+        result: Address,
+        arg_start: ?Address,
+        callee: Address,
+        has_return: bool,
+    },
     call_extern: struct {
         result: Address,
         arg_start: ?Address,
@@ -283,6 +309,16 @@ pub const Instr = union(enum) {
     // meta
     block: *IRBlock,
     destination: Address,
+    fn_to_assemble: struct {
+        // callee object
+        result: Address,
+
+        // function objects
+        memory: *Function,
+        lit: Address,
+        // block is an raw adress
+        block: ?Address,
+    },
 
     // extended
     extended,
@@ -291,10 +327,13 @@ pub const Instr = union(enum) {
         switch (self) {
             .no_op => return "",
             .ret => return std.fmt.bufPrint(buffer, "return", .{}),
-            .call => unreachable,
+            .call => |c| {
+                const result = c.result.register();
+                return std.fmt.bufPrint(buffer, "call\tfn() -> reg[{}]", .{result});
+            },
             .call_extern => |ce| {
                 const result = ce.result.register();
-                return std.fmt.bufPrint(buffer, "extern_fn:\t() -> reg[{}]", .{result});
+                return std.fmt.bufPrint(buffer, "call\textern_fn() -> reg[{}]", .{result});
             },
             .invoke => unreachable,
             .invoke_extern => unreachable,
@@ -658,7 +697,15 @@ pub const IR = struct {
                         too_print.as_slice(),
                     });
                 },
-                .Fn => {
+                .ExternFn => {
+                    const too_print = "a fn"; //item.resolve_object().Fn();
+                    std.debug.print("[{} : {s}]: \"{s}\"\n", .{
+                        i,
+                        @tagName(lk),
+                        too_print, //.as_slice(),
+                    });
+                },
+                .InternalFn => {
                     const too_print = "a fn"; //item.resolve_object().Fn();
                     std.debug.print("[{} : {s}]: \"{s}\"\n", .{
                         i,
@@ -819,6 +866,8 @@ pub const Compiler = struct {
     objects: *Stack(*Object),
     depth: usize = 0,
     dest: u56 = 0,
+    in_function: bool = false,
+    function_head_depth: u56 = 0,
 
     pub fn compile(src: []const u8, config: *FeanConfig, meta: *CompilerMeta) !*IR {
         var ast = try Parser.parse(src, config);
@@ -877,8 +926,12 @@ pub const Compiler = struct {
     fn generate(self: *@This(), node: *Node, scope: Scope, result: ?Address, extra: ?Address) anyerror!?Address {
         switch (node.*) {
             .scope => |s| {
-                // tod make sure this is ok
-                var to_inline = scope != .head;
+                // don't emit the irblock into parent ir.
+                var detatch = false;
+                if (extra != null and extra.?.kind() == .detach) detatch = true;
+
+                // todo make sure this is ok
+                var to_inline = false; //scope != .head;
 
                 // todo maybe allow scoped typing
                 var block = try Scope.create_block(self.allocator, scope, s.symbols);
@@ -887,14 +940,24 @@ pub const Compiler = struct {
                     block.block.inlining = true;
                     block.block.registers = scope.reg_count();
                     block.block.temporaries = scope.temp_count();
-                } else try self.dive(scope);
+                } else if (!detatch) {
+                    try self.dive(scope);
+                }
+
+                defer {
+                    // try unallowed in defer
+                    if (!to_inline and !detatch) self.ascend(scope) catch unreachable;
+                }
 
                 for (s.statments.?) |stmnt| {
                     _ = try self.generate(stmnt, block, null, null);
                 }
 
-                try scope.push_instr(Instr{ .block = block.block });
-                if (!to_inline) try self.ascend(scope);
+                if (detatch) {
+                    return Address.new_raw(@ptrToInt(block.block));
+                } else {
+                    try scope.push_instr(Instr{ .block = block.block });
+                }
             },
             .variable => {
                 if (scope.is_head()) {
@@ -922,7 +985,37 @@ pub const Compiler = struct {
                     },
                     .Return => {
                         if (s.value == null) {
-                            try scope.push_instr(.ret);
+                            try scope.push_instr(Instr{ .ret = false });
+                        } else {
+                            if (self.depth == 0) {
+                                // we are not nested
+                                var address = scope.get_temp().?;
+                                var address_moved = false;
+
+                                var gen_result = try self.generate(s.value.?, scope, address, null);
+
+                                defer {
+                                    if (!address_moved) {
+                                        scope.drop_temp();
+                                    }
+                                }
+
+                                if (gen_result != null) {
+                                    address_moved = true;
+                                    scope.drop_temp();
+                                    address = gen_result.?;
+                                }
+
+                                _ = try self.generate(s.value.?, scope, address, null);
+
+                                try scope.push_instr(Instr{ .copy = .{ .result = Address.new_register(0), .a = address } });
+                                try scope.push_instr(Instr{ .ret = false });
+                            }
+                        }
+                    },
+                    .ReturnRoot => {
+                        if (s.value == null) {
+                            try scope.push_instr(Instr{ .ret = true });
                         } else {
                             if (self.depth == 0) {
                                 // we are not nested
@@ -932,7 +1025,7 @@ pub const Compiler = struct {
                                 _ = try self.generate(s.value.?, scope, address, null);
 
                                 try scope.push_instr(Instr{ .copy = .{ .result = Address.new_register(0), .a = address } });
-                                try scope.push_instr(.ret);
+                                try scope.push_instr(Instr{ .ret = true });
                             } else {
                                 // we are nested
                                 var address = scope.get_temp().?;
@@ -956,7 +1049,7 @@ pub const Compiler = struct {
                                 const lower_o: u56 = 0;
 
                                 try scope.push_instr(Instr{ .set_upvalue = .{ .result = Address.new_upvalue(lower_o), .a = address } });
-                                try scope.push_instr(.ret);
+                                try scope.push_instr(Instr{ .ret = true });
                             }
                         }
                     },
@@ -966,7 +1059,7 @@ pub const Compiler = struct {
                 if (func.is_extern) {
                     try self.generate_extern_function(node, scope, result.?);
                 } else {
-                    //todo implement
+                    try self.generate_internal_function(node, scope, result.?);
                 }
             },
             .conditional_if => try self.generate_conditional_if(node, scope),
@@ -1331,15 +1424,11 @@ pub const Compiler = struct {
             condition = gen_result.?;
         }
 
-        const if_condition = scope.get_temp().?;
-        defer scope.drop_temp();
-        try scope.push_instr(Instr{ .not = .{ .source = condition, .dest = if_condition } });
-
         if (conditional.if_else == null) {
             // single prong if
             const end_dest = self.new_dest();
             try scope.push_instr(Instr{ .if_jmp = .{
-                .condition = if_condition,
+                .condition = condition,
                 .offset = end_dest,
             } });
 
@@ -1351,7 +1440,7 @@ pub const Compiler = struct {
             const end_dest = self.new_dest();
             const else_dest = self.new_dest();
             try scope.push_instr(Instr{ .if_jmp = .{
-                .condition = if_condition,
+                .condition = condition,
                 .offset = else_dest,
             } });
 
@@ -1390,14 +1479,10 @@ pub const Compiler = struct {
             condition = gen_result.?;
         }
 
-        const if_condition = scope.get_temp().?;
-        defer scope.drop_temp();
-        try scope.push_instr(Instr{ .not = .{ .source = condition, .dest = if_condition } });
-
         const end_dest = self.new_dest();
 
         try scope.push_instr(Instr{ .if_jmp = .{
-            .condition = if_condition,
+            .condition = condition,
             .offset = end_dest,
         } });
 
@@ -1511,7 +1596,42 @@ pub const Compiler = struct {
             .body = ptr.?,
         } };
 
-        const lit = try self.push_literal(Item{ .object = object.obj }, .Fn);
+        const lit = try self.push_literal(Item{ .object = object.obj }, .ExternFn);
+        try scope.push_instr(.{ .load_literal = .{
+            .result = result,
+            .a = lit,
+        } });
+    }
+
+    fn generate_internal_function(self: *@This(), node: *Node, scope: Scope, result: Address) !void {
+        const function = node.function;
+
+        const object = try self.heap.alloc_object(@sizeOf(Function));
+        const body = object.item.resolve(*Function);
+
+        var fn_head = false;
+        if (!self.in_function) {
+            fn_head = true;
+            self.in_function = true;
+        }
+        defer {
+            if (fn_head) self.in_function = false;
+        }
+
+        body.*.internal.arity = @intCast(u8, function.params.len);
+        body.*.internal.result = (function.result != null);
+
+        const lit = try self.push_literal(Item{ .object = object.obj }, .InternalFn);
+
+        // todo params
+
+        try scope.push_instr(.{ .fn_to_assemble = .{
+            .result = result,
+            .memory = body,
+            .lit = lit,
+            .block = try self.generate(function.body.body, scope, null, Address.new_detach()),
+        } });
+
         try scope.push_instr(.{ .load_literal = .{
             .result = result,
             .a = lit,
@@ -1548,12 +1668,27 @@ pub const Compiler = struct {
             unreachable;
         }
 
-        try scope.push_instr(.{ .call_extern = .{
-            .result = result,
-            .arg_start = arg_start,
-            .callee = function_register,
-            .has_return = true,
-        } });
+        var kind_name: []const u8 = "";
+        switch (fn_identity.kind.?) {
+            .resolved => |k| kind_name = k.name,
+            .unresolved => |n| kind_name = n,
+        }
+
+        if (std.mem.eql(u8, kind_name, "ExternFn")) {
+            try scope.push_instr(.{ .call_extern = .{
+                .result = result,
+                .arg_start = arg_start,
+                .callee = function_register,
+                .has_return = true,
+            } });
+        } else {
+            try scope.push_instr(.{ .call = .{
+                .result = result,
+                .arg_start = arg_start,
+                .callee = function_register,
+                .has_return = true,
+            } });
+        }
     }
 
     fn generate_literal(self: *@This(), node: *Node, scope: Scope, result: Address) !?Address {
@@ -1677,8 +1812,11 @@ pub const Compiler = struct {
                         const found_text = found.resolve_object().text();
                         same = literal.resolve_object().text().eq(found_text);
                     },
-                    .Fn => {
-                        unreachable;
+                    .ExternFn => {
+                        same = false;
+                    },
+                    .InternalFn => {
+                        same = false;
                     },
 
                     // objects that are not builtin
@@ -1733,7 +1871,8 @@ const LitKind = enum {
     f32,
     bool,
     Text,
-    Fn,
+    ExternFn,
+    InternalFn,
 
     // objects that are not builtin
     Object,

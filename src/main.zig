@@ -11,7 +11,7 @@ pub fn main() !void {
 
     config.fn_lookup = lookup_fn;
 
-    var file = try std.fs.cwd().openFile("fib.fe", std.fs.File.OpenFlags{});
+    var file = try std.fs.cwd().openFile("fn.fe", std.fs.File.OpenFlags{});
     defer file.close();
 
     const buffer_size = 1024;
@@ -20,7 +20,7 @@ pub fn main() !void {
 
     var vm = try fean.Fean.create(file_buffer, config);
 
-    std.debug.print("We got: {}\n", .{vm.thread.stack.inner[0].i64});
+    std.debug.print("We got: {}\n", .{vm.thread.register[0].i64});
 }
 
 const fean_fn = *const fn (args: []fean.vm.Item, result: ?*fean.vm.Item) void;

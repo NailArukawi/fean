@@ -1,5 +1,10 @@
 const std = @import("std");
 
+const Token = @import("token.zig").Token;
+const Span = @import("token.zig").Span;
+const TokenData = @import("token.zig").TokenData;
+const TokenKind = @import("token.zig").TokenKind;
+
 const Symbol = @import("symboltable.zig").Symbol;
 const SymbolTable = @import("symboltable.zig").SymbolTable;
 const SymbolKind = @import("symboltable.zig").SymbolKind;
@@ -75,8 +80,91 @@ pub const Resolver = struct {
     }
 
     fn visit(self: *@This(), node: *Node, scope: *Scope) !void {
+        try self.expand_visit(node, scope);
         _ = try self.kind_visit(node, scope);
         try self.symbol_visit(node, scope);
+    }
+
+    fn expand_visit(self: *@This(), node: *Node, scope: *Scope) !void {
+        switch (node.*) {
+            .scope => |s| {
+                if (s.statments == null) {
+                    return;
+                }
+
+                var head = Scope{
+                    .parent = scope,
+                    .kinds = s.kinds,
+                    .symbols = s.symbols,
+                };
+
+                for (s.statments.?) |scope_node| {
+                    try self.expand_visit(scope_node, &head);
+                }
+            },
+            .variable => |v| {
+                if (v.value != null) try self.expand_visit(v.value.?, scope);
+            },
+            .constant => |c| {
+                try self.expand_visit(c.value, scope);
+            },
+            .assignment => |a| {
+                try self.expand_visit(a.value, scope);
+            },
+            .statment => |v| {
+                if (v.value != null) {
+                    try self.expand_visit(v.value.?, scope);
+                }
+            },
+            .function => |func| {
+                if (!func.is_extern) {
+                    try self.expand_visit(func.body.body, scope);
+                }
+            },
+            .conditional_if => |cif| {
+                try self.expand_visit(cif.condition, scope);
+
+                // todo span maybe?
+                var inverse_condition = try self.allocator.create(Node);
+                inverse_condition.* = Node{ .unary_expression = .{
+                    .op = Token.new_symbol(.bang, Span.default()),
+                    .value = cif.condition,
+                } };
+
+                node.*.conditional_if.condition = inverse_condition;
+                try self.expand_visit(cif.if_then, scope);
+                if (cif.if_else != null) {
+                    try self.expand_visit(cif.if_else.?, scope);
+                }
+            },
+            .conditional_while => |cw| {
+                try self.expand_visit(cw.condition, scope);
+
+                // todo span maybe?
+                var inverse_condition = try self.allocator.create(Node);
+                inverse_condition.* = Node{ .unary_expression = .{
+                    .op = Token.new_symbol(.bang, Span.default()),
+                    .value = cw.condition,
+                } };
+
+                node.*.conditional_while.condition = inverse_condition;
+                try self.expand_visit(cw.body, scope);
+            },
+            .binary_expression => |b| {
+                try self.expand_visit(b.lhs, scope);
+                try self.expand_visit(b.rhs, scope);
+            },
+            .unary_expression => |u| {
+                try self.expand_visit(u.value, scope);
+            },
+            .call => {
+                // todo
+                return;
+            },
+            .literal => {
+                return;
+            },
+        }
     }
 
     fn kind_visit(self: *@This(), node: *Node, scope: *Scope) !?SymbolKind {

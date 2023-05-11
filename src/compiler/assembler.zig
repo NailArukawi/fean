@@ -3,6 +3,7 @@ const std = @import("std");
 const SymbolTable = @import("symboltable.zig").SymbolTable;
 const KindTable = @import("kindtable.zig").KindTable;
 const IR = @import("mod.zig").IR;
+const IRBlock = @import("mod.zig").IRBlock;
 const Instr = @import("mod.zig").Instr;
 const Address = @import("mod.zig").Address;
 const CompilerMeta = @import("mod.zig").CompilerMeta;
@@ -84,6 +85,9 @@ pub const Assembler = struct {
     result: AssembledResult,
     meta: *CompilerMeta,
     body: *IR,
+
+    in_fn: bool = false,
+    fn_body: ?*IRBlock = null,
     op_count: usize = 0,
 
     jumps: JumpRecordStack,
@@ -105,18 +109,68 @@ pub const Assembler = struct {
         return assembler.result;
     }
 
+    fn assemble_fn(self: *@This(), fn_body: *IRBlock) !AssembledResult {
+        // store old
+        const result = self.result;
+        defer self.result = result;
+
+        const op_count = self.op_count;
+        defer self.op_count = op_count;
+
+        const jumps = self.jumps;
+        defer self.jumps = jumps;
+
+        // store new
+        const new_result = AssembledResult.default(self.allocator) catch unreachable;
+        self.result = new_result;
+
+        var new_jumps: JumpRecordStack = try JumpRecordStack.create(self.allocator);
+        self.jumps = new_jumps;
+        defer new_jumps.destroy();
+
+        self.fn_body = fn_body;
+        defer self.fn_body = null;
+
+        self.in_fn = true;
+        defer self.in_fn = false;
+
+        var i: usize = 0;
+        for (fn_body.body.as_slice()) |instr| {
+            i += (self.assemble_instr(instr, i) catch unreachable);
+        }
+
+        return new_result;
+    }
+
     fn assemble_instr(self: *@This(), instr: Instr, i: usize) !usize {
         var lines_written: usize = 1;
 
         switch (instr) {
             // Misc
             .no_op => unreachable,
-            .ret => {
+            .ret => |r| {
                 var opcode = Opcode.new();
                 opcode.op = Op.ret;
+
+                if (r) {
+                    opcode.set_a(1);
+                } else {
+                    opcode.set_a(0);
+                }
+
                 try self.push_op(opcode);
             },
-            .call => unreachable,
+            .call => |c| {
+                var opcode = Opcode.new();
+                opcode.op = Op.call;
+
+                opcode.set_a(c.result.register());
+                opcode.set_b(0); // todo
+                opcode.set_c(c.callee.register());
+                opcode.set_d(1); //todo
+
+                try self.push_op(opcode);
+            },
             .call_extern => |ce| {
                 var opcode = Opcode.new();
                 opcode.op = Op.call_extern;
@@ -586,6 +640,15 @@ pub const Assembler = struct {
                         opcode.set_x(@bitCast(u32, offset));
                     }
                 }
+            },
+            .fn_to_assemble => |fta| {
+                lines_written = 0;
+
+                const block_addr = fta.block.?.raw();
+                const fn_body = @intToPtr(*IRBlock, block_addr);
+                const assembled_fn_body = try self.assemble_fn(fn_body);
+
+                fta.memory.internal.body = assembled_fn_body.chunk;
             },
 
             // extended
