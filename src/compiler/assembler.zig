@@ -122,6 +122,7 @@ pub const Assembler = struct {
 
         // store new
         const new_result = AssembledResult.default(self.allocator) catch unreachable;
+        self.op_count = 0;
         self.result = new_result;
 
         var new_jumps: JumpRecordStack = try JumpRecordStack.create(self.allocator);

@@ -4,12 +4,22 @@ const std = @import("std");
 const vm = @import("../vm/mod.zig");
 const Allocator = std.mem.Allocator;
 
+pub const KindMeta = struct {
+    is_fn: bool,
+    is_extern_fn: bool,
+};
+
+pub const FN_SIZE: usize = @sizeOf(vm.Function);
+pub const EXTERN_FN_SIZE: usize = @sizeOf(vm.Function);
+
 pub const Kind = *KindTable;
+pub const Field = *FieldList;
 pub const KindTable = struct {
     name: []const u8,
     // does a type need more than ~4GiB?
     size: usize,
     fields: ?*FieldList,
+    meta: KindMeta,
     next: ?*@This(),
 
     pub fn create(allocator: Allocator) !*@This() {
@@ -44,33 +54,53 @@ pub const KindTable = struct {
         _ = try self.install("dict", null, @sizeOf(Dict), allocator);
         _ = try self.install("text", null, @sizeOf(Text), allocator);
         _ = try self.install("bool", null, @sizeOf(bool), allocator);
-        _ = try self.install("Fn", null, @sizeOf(vm.Function), allocator);
-        _ = try self.install("ExternFn", null, @sizeOf(vm.Function), allocator);
+        _ = try self.install("Fn", null, FN_SIZE, allocator);
+        _ = try self.install("ExternFn", null, EXTERN_FN_SIZE, allocator);
         _ = try self.install("void", null, @sizeOf(void), allocator);
 
         return self;
     }
 
-    fn default(self: *@This()) void {
+    inline fn default(self: *@This()) void {
         self.size = 0;
         self.fields = null;
+        self.meta = KindMeta{
+            .is_fn = false,
+            .is_extern_fn = false,
+        };
         self.next = null;
     }
 
     pub fn install(self: *@This(), name: []const u8, fields: ?*FieldList, size: usize, allocator: Allocator) !*@This() {
-        var cursor = self;
-        while (cursor.next != null) {
-            cursor = cursor.next.?;
-        }
-
         var installee = try allocator.create(@This());
         installee.default();
         installee.name = name;
         installee.fields = fields;
         installee.size = size;
+        installee.next = self.next;
 
-        cursor.next = installee;
+        self.next = installee;
         return installee;
+    }
+
+    pub fn install_fn(self: *@This(), name: []const u8, fields: ?*FieldList, allocator: Allocator) !*@This() {
+        var installed = try self.install(name, fields, FN_SIZE, allocator);
+        installed.meta.is_fn = true;
+        return installed;
+    }
+
+    pub fn install_extern_fn(self: *@This(), name: []const u8, fields: ?*FieldList, allocator: Allocator) !*@This() {
+        var installed = try self.install(name, fields, EXTERN_FN_SIZE, allocator);
+        installed.meta.is_extern_fn = true;
+        return installed;
+    }
+
+    pub fn install_field(self: *@This(), name: []const u8, kind: Kind, allocator: Allocator) !void {
+        if (self.fields == null) {
+            self.fields = try FieldList.create(name, kind, allocator);
+        } else {
+            try self.fields.?.install(name, kind, allocator);
+        }
     }
 
     pub fn lookup(self: *@This(), name: []const u8) ?*@This() {
@@ -97,16 +127,30 @@ pub const KindTable = struct {
 
 pub const FieldList = struct {
     name: []const u8,
-    kind: ?*KindTable,
+    kind: Kind,
     next: ?*@This(),
 
-    pub fn install(self: *@This(), name: []const u8, kind: ?*@This(), allocator: Allocator) !void {
+    pub fn create(name: []const u8, kind: Kind, allocator: Allocator) !*FieldList {
         var installee = try allocator.create(@This());
         installee.name = name;
         installee.kind = kind;
         installee.next = null;
 
-        self.next = installee;
+        return installee;
+    }
+
+    pub fn install(self: *@This(), name: []const u8, kind: Kind, allocator: Allocator) !void {
+        var cursor = self;
+        while (cursor.next != null) {
+            cursor = cursor.next.?;
+        }
+
+        var installee = try allocator.create(@This());
+        installee.name = name;
+        installee.kind = kind;
+        installee.next = null;
+
+        cursor.next = installee;
     }
 
     pub fn lookup(self: *@This(), name: []const u8) ?*@This() {

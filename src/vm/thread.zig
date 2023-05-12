@@ -22,8 +22,8 @@ const AssembledResult = @import("../compiler/mod.zig").AssembledResult;
 const CompilerMeta = @import("../compiler/mod.zig").CompilerMeta;
 
 const REGISTER_COUNT: usize = 1024;
-const REGISTER_STACK_DEPTH: usize = 4;
-const LITERALS_INITIAL_SIZE: usize = 256;
+const STACK_DEPTH: usize = 64;
+const STACK_SIZE: usize = REGISTER_COUNT * STACK_DEPTH;
 const CALL_STACK_SIZE: usize = 32;
 
 pub const CallStack = struct {
@@ -50,6 +50,9 @@ pub const CallStack = struct {
 };
 
 pub const Thread = struct {
+    stack: [STACK_SIZE]Item = [_]Item{Item.default()} ** STACK_SIZE,
+    stack_base: usize,
+    obj_map: DynamicBitSet,
     heap: *Heap,
 
     literals: *Stack(Item),
@@ -57,13 +60,12 @@ pub const Thread = struct {
 
     methods: Linked(Methods),
 
+    stack_view: [*]Item,
     register: [*]Item,
-    stack: Stack(Item),
     depth: usize,
-    obj_map: DynamicBitSet,
-    stack_depth: usize,
 
     call_stack: CallStack,
+
     chunk: *Chunk,
     ip: usize,
 
@@ -72,17 +74,17 @@ pub const Thread = struct {
     pub fn create(meta: *CompilerMeta, main: AssembledResult, allocator: Allocator) !*@This() {
         const result = try allocator.create(@This());
 
-        const stack = try Stack(Item).create(allocator, REGISTER_COUNT * REGISTER_STACK_DEPTH);
+        result.stack = [_]Item{Item.default()} ** STACK_SIZE;
+        result.stack_base = 0;
         result.heap = try Heap.create(allocator);
 
         result.literals = &meta.literals;
         result.globals = try Global.default(result.heap);
 
-        result.register = stack.inner[0..REGISTER_COUNT];
-        result.stack = stack;
+        result.stack_view = result.stack[0..STACK_SIZE];
+        result.register = result.stack[0..REGISTER_COUNT];
         result.depth = 0;
-        result.obj_map = try DynamicBitSet.create(allocator, result.stack.capacity);
-        result.stack_depth = 0;
+        result.obj_map = try DynamicBitSet.create(allocator, STACK_SIZE);
 
         result.call_stack = try CallStack.create(allocator, CALL_STACK_SIZE);
         result.ip = 0;
@@ -104,14 +106,6 @@ pub const Thread = struct {
     pub fn destroy(self: *@This()) void {
         self.stack.destroy();
         self.chunk.destroy();
-    }
-
-    pub fn clear_register(self: *@This()) void {
-        var i: usize = 0;
-        while (i < REGISTER_COUNT) : (i += 1) {
-            self.register[i] = Item.default();
-            self.obj_map.set(i + self.stack_depth);
-        }
     }
 
     pub inline fn load_literal(self: *@This(), address: u22) Item {
@@ -136,53 +130,72 @@ pub const Thread = struct {
         _ = try self.globals.set(name_text, value);
     }
 
-    pub inline fn reg_to_top(self: *@This()) !void {
+    pub inline fn recalc_reg(self: *@This()) !void {
+        // out of stack
+        std.debug.assert(STACK_SIZE > (self.depth + self.stack_base));
         const depth_offset = self.depth * 1024;
-        if (self.stack.capacity < self.depth * 1024) {
-            const new_size = self.depth * 1024;
-            try self.stack.ensure_capacity(new_size);
-        }
-
-        self.register = self.stack.inner[depth_offset..(depth_offset + 1024)].ptr;
+        self.register = self.stack_view[depth_offset..(depth_offset + 1024)].ptr;
     }
 
-    pub fn call_fn(self: *@This(), body: *Chunk) !void {
+    pub inline fn recalc_stack(self: *@This()) !void {
+        // out of stack
+        std.debug.assert(STACK_SIZE > (self.depth + self.stack_base));
+        const depth_offset = self.depth * 1024;
+        const stack_base_offset = self.stack_base * 1024;
+        self.stack_view = self.stack[stack_base_offset..(STACK_SIZE)].ptr;
+        self.register = self.stack_view[depth_offset..(depth_offset + 1024)].ptr;
+    }
+
+    pub fn call_fn(self: *@This(), body: *Chunk, result: u10) !void {
+        self.stack_base += (self.depth + 1);
+
         const frame = CallFrame{
-            .base = self.depth,
             .function = self.chunk,
             .ip = self.ip,
+            .depth = self.depth,
+            .result = result,
         };
 
         self.chunk = body;
         self.ip = 0;
-        self.depth = self.depth + 1;
-        try self.reg_to_top();
+        self.depth = 0;
+
+        try self.recalc_stack();
 
         try self.call_stack.push(frame);
-
         return;
     }
 
     pub fn ret_fn(self: *@This()) !void {
-        const frame = self.call_stack.pop();
+        var frame = self.call_stack.pop();
+        const new_base = (self.stack_base - self.depth - 1);
 
         self.chunk = frame.function;
         self.ip = frame.ip;
-        self.depth = frame.base;
+        self.stack_base = new_base;
+        self.depth = frame.depth;
 
-        try self.reg_to_top();
+        const result = self.register[0];
 
+        try self.recalc_stack();
+
+        self.register[frame.result] = result;
         return;
     }
 
     pub fn execute(self: *@This()) void {
+        //self.chunk.debug(false);
         while (true) {
             const opcode: Opcode = self.chunk.next_op(&self.ip);
             switch (opcode.op) {
                 .no_op => continue,
                 .ret => {
                     const root = opcode.a() > 0;
-                    if (root or self.call_stack.is_bottom()) {
+                    const bottom = self.call_stack.is_bottom();
+                    if (root or bottom) {
+                        //we are returning from a script not function
+                        self.depth = 0;
+                        self.recalc_stack() catch unreachable;
                         return;
                     } else {
                         self.ret_fn() catch unreachable;
@@ -191,28 +204,29 @@ pub const Thread = struct {
                 // todo
                 .dive => {
                     self.depth += 1;
-                    self.reg_to_top() catch unreachable;
+                    self.recalc_reg() catch unreachable;
                 },
                 // todo
                 .ascend => {
                     self.depth -= 1;
-                    self.reg_to_top() catch unreachable;
+                    self.recalc_reg() catch unreachable;
                 },
                 .call => {
                     const result = opcode.a();
-                    _ = result;
                     const arg_start = opcode.b();
                     _ = arg_start;
                     const callee = opcode.c();
                     const has_return = opcode.d();
                     const function = self.register[callee].function().internal;
 
+                    //function.body.debug(true);
+
                     if (has_return == 0) {
                         // call extern method with no return value
-                        self.call_fn(function.body) catch unreachable;
+                        self.call_fn(function.body, 0) catch unreachable;
                     } else {
                         // call extern method with return value
-                        self.call_fn(function.body) catch unreachable;
+                        self.call_fn(function.body, result) catch unreachable;
                     }
                 },
                 .call_extern => {
@@ -284,13 +298,15 @@ pub const Thread = struct {
                 .get_upvalue => {
                     const a = opcode.a();
                     const y = opcode.y();
-                    self.register[a] = self.stack.inner[y];
+                    //std.debug.print("get up: {}\n", .{self.stack_view[y].i64});
+                    self.register[a] = self.stack_view[y];
                 },
                 // todo copy obj bit
                 .set_upvalue => {
                     const a = opcode.a();
                     const y = opcode.y();
-                    self.stack.inner[y] = self.register[a];
+                    //std.debug.print("set up: {}\n", .{self.register[a].i64});
+                    self.stack_view[y] = self.register[a];
                 },
                 // todo copy obj bit
                 .copy => {
@@ -506,7 +522,7 @@ pub const Thread = struct {
 
                 .inc_i64 => {
                     const x = opcode.x();
-                    self.stack.inner[x].i64 += 1;
+                    self.stack_view[x].i64 += 1;
                 },
                 .inc_u64 => unreachable,
                 .inc_i32 => unreachable,

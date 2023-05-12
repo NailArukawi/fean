@@ -268,6 +268,10 @@ pub const Parser = struct {
         var count: usize = 0;
         var cursor: usize = 0;
 
+        if (!self.check(.paren_right)) {
+            count = 1;
+        }
+
         // todo make better
         while (!self.check_ahead(.paren_right, cursor)) {
             if (self.check_ahead(.comma, cursor)) {
@@ -286,13 +290,13 @@ pub const Parser = struct {
             // parameter
             self.check_err(.identifier, "expected an identifier for parameter");
             const name = self.pop().?;
-            self.consume_kind(.paren_left, "expected parameter identifier to have a delimiting :");
+            self.consume_kind(.colon, "expected parameter identifier to have a delimiting :");
             self.check_err(.identifier, "expected an identifier for parameter");
             const kind = self.pop().?;
 
             // commas
-            if (i != write_to.len) {
-                self.consume_kind(.paren_left, "expected parameter to have a delimiting ,");
+            if ((i + 1) < write_to.len) {
+                self.consume_kind(.comma, "expected parameter to have a delimiting ,");
             }
 
             const parameter = Parameter{ .name = name.data.identifier, .symbol = null, .kind = .{ .unresolved = kind.data.identifier } };
@@ -352,14 +356,22 @@ pub const Parser = struct {
             const expr = self.expression(scope);
             self.consume_kind(.semi_colon, "Expected return statment to end with a ;");
             var result = self.allocator.create(Node) catch unreachable;
+            if (self.rooted) {
+                result.* = Node{ .statment = .{ .kind = .ReturnRoot, .value = expr } };
+            } else {
+                result.* = Node{ .statment = .{ .kind = .Return, .value = expr } };
+            }
 
-            result.* = Node{ .statment = .{ .kind = .Return, .value = expr } };
             return result;
         } else {
             self.consume_kind(.semi_colon, "Expected return statment to end with a ;");
             var result = self.allocator.create(Node) catch unreachable;
 
-            result.* = Node{ .statment = .{ .kind = .Return, .value = null } };
+            if (self.rooted) {
+                result.* = Node{ .statment = .{ .kind = .ReturnRoot, .value = null } };
+            } else {
+                result.* = Node{ .statment = .{ .kind = .Return, .value = null } };
+            }
             return result;
         }
     }

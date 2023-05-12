@@ -328,8 +328,9 @@ pub const Instr = union(enum) {
             .no_op => return "",
             .ret => return std.fmt.bufPrint(buffer, "return", .{}),
             .call => |c| {
+                const fn_pos = c.callee.register();
                 const result = c.result.register();
-                return std.fmt.bufPrint(buffer, "call\tfn() -> reg[{}]", .{result});
+                return std.fmt.bufPrint(buffer, "call\treg[{}]() -> reg[{}]", .{ fn_pos, result });
             },
             .call_extern => |ce| {
                 const result = ce.result.register();
@@ -706,12 +707,15 @@ pub const IR = struct {
                     });
                 },
                 .InternalFn => {
-                    const too_print = "a fn"; //item.resolve_object().Fn();
+                    const too_print = "a fn";
+                    const function = item.resolve_object().function();
                     std.debug.print("[{} : {s}]: \"{s}\"\n", .{
                         i,
                         @tagName(lk),
                         too_print, //.as_slice(),
                     });
+                    std.debug.print("      ↳ fn_body:\n", .{});
+                    function.internal.body.debug(true);
                 },
 
                 // obhects that are not builtin
@@ -928,10 +932,11 @@ pub const Compiler = struct {
             .scope => |s| {
                 // don't emit the irblock into parent ir.
                 var detatch = false;
+                var old_depth: usize = self.depth;
                 if (extra != null and extra.?.kind() == .detach) detatch = true;
 
                 // todo make sure this is ok
-                var to_inline = false; //scope != .head;
+                var to_inline = false; // = scope != .head;
 
                 // todo maybe allow scoped typing
                 var block = try Scope.create_block(self.allocator, scope, s.symbols);
@@ -942,11 +947,17 @@ pub const Compiler = struct {
                     block.block.temporaries = scope.temp_count();
                 } else if (!detatch) {
                     try self.dive(scope);
+                } else {
+                    self.depth = 0;
                 }
 
                 defer {
                     // try unallowed in defer
-                    if (!to_inline and !detatch) self.ascend(scope) catch unreachable;
+                    if (!to_inline and !detatch) {
+                        self.ascend(scope) catch unreachable;
+                    } else if (detatch) {
+                        self.depth = old_depth;
+                    }
                 }
 
                 for (s.statments.?) |stmnt| {
@@ -987,30 +998,28 @@ pub const Compiler = struct {
                         if (s.value == null) {
                             try scope.push_instr(Instr{ .ret = false });
                         } else {
-                            if (self.depth == 0) {
-                                // we are not nested
-                                var address = scope.get_temp().?;
-                                var address_moved = false;
+                            // we are not nested
+                            var address = scope.get_temp().?;
+                            var address_moved = false;
 
-                                var gen_result = try self.generate(s.value.?, scope, address, null);
+                            var gen_result = try self.generate(s.value.?, scope, address, null);
 
-                                defer {
-                                    if (!address_moved) {
-                                        scope.drop_temp();
-                                    }
-                                }
-
-                                if (gen_result != null) {
-                                    address_moved = true;
+                            defer {
+                                if (!address_moved) {
                                     scope.drop_temp();
-                                    address = gen_result.?;
                                 }
-
-                                _ = try self.generate(s.value.?, scope, address, null);
-
-                                try scope.push_instr(Instr{ .copy = .{ .result = Address.new_register(0), .a = address } });
-                                try scope.push_instr(Instr{ .ret = false });
                             }
+
+                            if (gen_result != null) {
+                                address_moved = true;
+                                scope.drop_temp();
+                                address = gen_result.?;
+                            }
+
+                            _ = try self.generate(s.value.?, scope, address, null);
+
+                            try scope.push_instr(Instr{ .copy = .{ .result = Address.new_register(0), .a = address } });
+                            try scope.push_instr(Instr{ .ret = false });
                         }
                     },
                     .ReturnRoot => {

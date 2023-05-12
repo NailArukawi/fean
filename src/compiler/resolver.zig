@@ -10,8 +10,10 @@ const SymbolTable = @import("symboltable.zig").SymbolTable;
 const SymbolKind = @import("symboltable.zig").SymbolKind;
 const Kind = @import("kindtable.zig").Kind;
 const KindTable = @import("kindtable.zig").KindTable;
+const FieldList = @import("kindtable.zig").FieldList;
 const Parser = @import("parser.zig").Parser;
 const AST = @import("parser.zig").AST;
+const Parameter = @import("parser.zig").Parameter;
 const Node = @import("parser.zig").Node;
 
 const Allocator = std.mem.Allocator;
@@ -56,11 +58,26 @@ const Scope = struct {
 
         return result;
     }
+
+    pub fn install_kind(self: *@This(), name: []const u8, fields: ?*FieldList, size: usize, allocator: Allocator) !Kind {
+        return self.kinds.?.install(name, fields, size, allocator);
+    }
+
+    pub fn install_kind_fn(self: *@This(), name: []const u8, fields: ?*FieldList, allocator: Allocator) !Kind {
+        return self.kinds.?.install_fn(name, fields, allocator);
+    }
+
+    pub fn install_kind_extern_fn(self: *@This(), name: []const u8, fields: ?*FieldList, allocator: Allocator) !Kind {
+        return self.kinds.?.install_extern_fn(name, fields, allocator);
+    }
 };
+
+pub const TYPE_GEN_BUFFER = 256;
 
 pub const Resolver = struct {
     ast: *AST,
     allocator: Allocator,
+    buffer: [TYPE_GEN_BUFFER]u8 = [_]u8{0} ** TYPE_GEN_BUFFER,
 
     pub fn resolve(ast: *AST, allocator: Allocator) !void {
         var resolver = @This(){
@@ -117,7 +134,9 @@ pub const Resolver = struct {
                 }
             },
             .function => |func| {
-                if (!func.is_extern) {
+                if (func.is_extern) {
+                    //
+                } else {
                     try self.expand_visit(func.body.body, scope);
                 }
             },
@@ -191,7 +210,19 @@ pub const Resolver = struct {
                 return (scope.lookup_symbol(v.name) orelse return null).kind;
             },
             .constant => |c| {
-                _ = c;
+                var symbol = (scope.lookup_symbol(c.name) orelse return null);
+
+                var kind_name: []const u8 = "";
+                switch (c.kind) {
+                    .resolved => |k| kind_name = k.name,
+                    .unresolved => |n| kind_name = n,
+                }
+
+                if (std.mem.eql(u8, "Fn", kind_name) or std.mem.eql(u8, "Fn", kind_name)) {
+                    symbol.kind = (try self.kind_visit(c.value, scope)).?;
+                }
+
+                // todo inferense
                 return null;
             },
             .assignment => |a| {
@@ -206,18 +237,95 @@ pub const Resolver = struct {
             },
             .function => {
                 var function = &node.function;
-                if (!function.is_extern) {
-                    return self.kind_visit(function.body.body, scope);
+                const is_extern = function.is_extern;
+
+                // resolve kinds in body
+                if (!is_extern) {
+                    _ = try self.kind_visit(function.body.body, scope);
                 }
 
-                if (function.result != null and function.result.? == .unresolved) {
-                    const found = scope.kinds.?.lookup(function.result.?.unresolved);
-                    if (found != null) {
-                        function.result.?.resolved = found.?;
+                // resolve fn kind name
+                var kind_name: []u8 = &self.buffer;
+                var cursor: usize = 0;
+
+                if (is_extern) {
+                    cursor = (try std.fmt.bufPrint(&self.buffer, "ExternFn(", .{})).len;
+                } else {
+                    cursor = (try std.fmt.bufPrint(&self.buffer, "Fn(", .{})).len;
+                }
+
+                if (function.params.len > 0) {
+                    for (function.params, 1..) |param, i| {
+                        var buffer_cursor = self.buffer[cursor..];
+                        const is_end = function.params.len == i;
+
+                        var param_kind_name: []const u8 = "";
+                        switch (param.kind) {
+                            .resolved => |k| param_kind_name = k.name,
+                            .unresolved => |n| param_kind_name = n,
+                        }
+
+                        if (is_end) {
+                            const written = try std.fmt.bufPrint(buffer_cursor, "{s}) -> ", .{param_kind_name});
+                            cursor += written.len;
+                        } else {
+                            const written = try std.fmt.bufPrint(buffer_cursor, "{s}, ", .{param_kind_name});
+                            cursor += written.len;
+                        }
+                    }
+                } else {
+                    var buffer_cursor = self.buffer[cursor..];
+                    const written = try std.fmt.bufPrint(buffer_cursor, ") -> ", .{});
+                    cursor += written.len;
+                }
+
+                var is_void = false;
+                if (function.result == null) {
+                    var buffer_cursor = self.buffer[cursor..];
+                    const written = try std.fmt.bufPrint(buffer_cursor, "void", .{});
+                    cursor += written.len;
+
+                    is_void = true;
+                } else {
+                    var result_kind_name: []const u8 = "";
+                    switch (function.result.?) {
+                        .resolved => |k| result_kind_name = k.name,
+                        .unresolved => |n| result_kind_name = n,
+                    }
+
+                    var buffer_cursor = self.buffer[cursor..];
+                    const written = try std.fmt.bufPrint(buffer_cursor, "{s}", .{result_kind_name});
+                    cursor += written.len;
+
+                    if (std.mem.eql(u8, "void", result_kind_name)) {
+                        is_void = true;
                     }
                 }
 
-                return SymbolKind{ .resolved = scope.kinds.?.lookup("fn").? };
+                // result of the above formatting
+                const result = kind_name[0..cursor];
+
+                // check for dupe
+                var result_kind = scope.lookup_kind(result);
+                if (result_kind == null) {
+                    var return_kind: Kind = undefined;
+                    if (is_void) {
+                        return_kind = scope.lookup_kind("void").?;
+                    } else {
+                        var return_kind_name: []const u8 = "";
+                        switch (function.result.?) {
+                            .resolved => |k| return_kind_name = k.name,
+                            .unresolved => |n| return_kind_name = n,
+                        }
+
+                        return_kind = scope.lookup_kind(return_kind_name).?;
+                    }
+
+                    const new_kind = try install_fn_kind(self, scope, result, function.params, return_kind, is_extern);
+                    return SymbolKind{ .resolved = new_kind };
+                } else {
+                    return SymbolKind{ .resolved = result_kind.? };
+                }
             },
             .conditional_if => |cif| {
                 _ = try self.kind_visit(cif.condition, scope);
@@ -383,3 +491,29 @@ pub const Resolver = struct {
         }
     }
 };
+
+fn install_fn_kind(self: *Resolver, scope: *Scope, name: []const u8, params: []Parameter, result: Kind, is_extern: bool) !Kind {
+    const allocator = self.allocator;
+    var cloned_name = try allocator.alloc(u8, name.len);
+    @memcpy(cloned_name, name);
+
+    var kind: Kind = undefined;
+    if (is_extern) {
+        kind = try scope.install_kind_extern_fn(cloned_name, null, allocator);
+    } else {
+        kind = try scope.install_kind_fn(cloned_name, null, allocator);
+    }
+
+    _ = try kind.install_field("return", result, allocator);
+    for (params) |param| {
+        var param_kind: Kind = undefined;
+        switch (param.kind) {
+            .resolved => |k| param_kind = k,
+            .unresolved => |n| param_kind = scope.lookup_kind(n).?,
+        }
+
+        _ = try kind.install_field("", param_kind, allocator);
+    }
+
+    return kind;
+}

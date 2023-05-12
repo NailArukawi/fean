@@ -1,11 +1,14 @@
-time : ExternFn : extern fn() -> i64;
+inner : Fn : fn() -> i64 {
+    i : i64 = 0;
+    count : i64 = 10;
 
-fib : Fn : fn() -> i64 {
-    return 69;
+    while (i < count) {
+        i++;
+    }
+
+    return i;
 }
 
-time();
-fib();
-time();
+result : i64 = inner();
 
-return;
+return result;

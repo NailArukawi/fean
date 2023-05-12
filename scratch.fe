@@ -1,9 +1,4 @@
-// todo not handeling void return!
-time : ExternFn : extern fn() -> i64;
-
-{
-    time();
-
+inner : Fn : fn() -> i64 {
     // fibonacci
     a : i64 = 1;
     b : i64 = 0;
@@ -21,8 +16,8 @@ time : ExternFn : extern fn() -> i64;
         i++;
     }
 
-    time();
-
     if (a < b) return b;
     return a;
 }
+
+return inner();

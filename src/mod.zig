@@ -14,12 +14,14 @@ pub const Fean = struct {
 
         // compiles a text file into a semi-linear instruction stack
         var ir = try compiler.Compiler.compile(src, config, compiler_meta);
-        //var chunk = try compiler.Compiler.compile(ir_chunck, config.allocator);
-        var buffer: [512]u8 = [_]u8{0} ** 512;
-        try ir.debug(&buffer, compiler_meta);
+        //var chunk = try compiler.Compiler.compile(ir_chunck, config.allocator)
 
         // transform the semi-linear instructions into somthing the thread can execute
         var main = try compiler.Assembler.assemble(ir, config.allocator, compiler_meta);
+
+        //debugging
+        var buffer: [512]u8 = [_]u8{0} ** 512;
+        try ir.debug(&buffer, compiler_meta);
         //main.chunk.debug();
 
         var fean = @This(){

@@ -11,7 +11,8 @@ const Text = @import("text.zig").Text;
 pub const CallFrame = struct {
     function: *Chunk,
     ip: usize,
-    base: usize,
+    depth: usize,
+    result: u10,
 };
 
 pub const Function = extern union {
