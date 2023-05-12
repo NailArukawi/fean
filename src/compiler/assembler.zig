@@ -166,7 +166,7 @@ pub const Assembler = struct {
                 opcode.op = Op.call;
 
                 opcode.set_a(c.result.register());
-                opcode.set_b(0); // todo
+                opcode.set_b(c.arg_start.?.register()); // todo
                 opcode.set_c(c.callee.register());
                 opcode.set_d(1); //todo
 

@@ -59,6 +59,10 @@ const Scope = struct {
         return result;
     }
 
+    pub fn install_symbol(self: *@This(), name: []const u8, kind: ?SymbolKind, size: usize, allocator: Allocator) !Symbol {
+        return self.symbols.?.install(allocator, name, kind, size);
+    }
+
     pub fn install_kind(self: *@This(), name: []const u8, fields: ?*FieldList, size: usize, allocator: Allocator) !Kind {
         return self.kinds.?.install(name, fields, size, allocator);
     }
@@ -134,6 +138,25 @@ pub const Resolver = struct {
                 }
             },
             .function => |func| {
+                // generate params in function
+                if (!func.is_extern and func.params.len > 0) {
+                    // tmp scope
+                    var fn_symbol = Scope{
+                        .parent = scope,
+                        .kinds = func.body.body.scope.kinds,
+                        .symbols = func.body.body.scope.symbols,
+                    };
+
+                    //expand function params
+                    for (func.params, 1..) |param, i| {
+                        // todo maybe dupe before cleanup
+                        // todo size
+                        var param_symbol = try fn_symbol.install_symbol(param.name, param.kind, 42069, self.allocator);
+                        param_symbol.*.param = true;
+                        param_symbol.*.binding = @intCast(u10, i);
+                    }
+                }
+
                 if (func.is_extern) {
                     //
                 } else {

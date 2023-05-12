@@ -584,12 +584,18 @@ pub const Parser = struct {
         var count: usize = 0;
         var cursor: usize = 0;
 
+        if (!self.check(.paren_right)) {
+            count = 1;
+        }
+
         while (!self.check_ahead(.paren_right, cursor)) {
             if (self.check_ahead(.comma, cursor)) {
                 count += 1;
             }
             cursor += 1;
         }
+
+        if (count == 0) return null;
 
         var i: usize = 0;
         var write_to = self.allocator.alloc(*Node, count) catch unreachable;

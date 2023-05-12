@@ -15,6 +15,7 @@ pub const SymbolTable = struct {
     kind: ?SymbolKind,
     size: usize,
     global: bool = false,
+    param: bool = false,
     binding: u10 = 0,
     depth: usize = 0,
     next: ?*@This(),
@@ -45,6 +46,10 @@ pub const SymbolTable = struct {
         installee.kind = kind;
         installee.size = size;
         installee.next = self.next;
+        installee.global = false;
+        installee.param = false;
+        installee.binding = 0;
+        installee.depth = 0;
         self.next = installee;
         return installee;
     }

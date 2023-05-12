@@ -330,7 +330,11 @@ pub const Instr = union(enum) {
             .call => |c| {
                 const fn_pos = c.callee.register();
                 const result = c.result.register();
-                return std.fmt.bufPrint(buffer, "call\treg[{}]() -> reg[{}]", .{ fn_pos, result });
+                if (c.arg_start == null) {
+                    return std.fmt.bufPrint(buffer, "call\treg[{}]() -> reg[{}]", .{ fn_pos, result });
+                } else {
+                    return std.fmt.bufPrint(buffer, "call\treg[{}](start reg:{}) -> reg[{}]", .{ fn_pos, c.arg_start.?.register(), result });
+                }
             },
             .call_extern => |ce| {
                 const result = ce.result.register();
@@ -786,6 +790,25 @@ pub const Scope = union(enum) {
         }
     }
 
+    pub fn param_count(self: @This()) u8 {
+        switch (self) {
+            .head => return 0,
+            .block => |b| {
+                var count: u8 = 0;
+                var cursor = b.symbols;
+                while (cursor != null) {
+                    if (cursor.?.param) {
+                        count += 1;
+                    }
+
+                    cursor = cursor.?.next;
+                }
+
+                return count;
+            },
+        }
+    }
+
     pub fn lookup_symbol(self: @This(), identifier: []const u8) ?Symbol {
         switch (self) {
             .head => |head| return head.lookup_symbol(identifier),
@@ -817,6 +840,13 @@ pub const Scope = union(enum) {
         }
     }
 
+    pub fn get_temp(self: @This()) ?Address {
+        switch (self) {
+            .head => |head| return head.get_temp(),
+            .block => |block| return block.get_temp(),
+        }
+    }
+
     pub fn drop_temp(self: @This()) void {
         switch (self) {
             .head => |head| head.drop_temp(),
@@ -831,17 +861,24 @@ pub const Scope = union(enum) {
         }
     }
 
-    pub fn get_temp(self: @This()) ?Address {
-        switch (self) {
-            .head => |head| return head.get_temp(),
-            .block => |block| return block.get_temp(),
-        }
-    }
-
     pub fn get_reg(self: @This()) ?Address {
         switch (self) {
             .head => |head| return head.get_reg(),
             .block => |block| return block.get_reg(),
+        }
+    }
+
+    pub fn drop_reg(self: @This()) void {
+        switch (self) {
+            .head => |head| head.drop_reg(),
+            .block => |block| block.drop_reg(),
+        }
+    }
+
+    pub fn drop_regs(self: @This(), count: u10) void {
+        switch (self) {
+            .head => |head| head.drop_regs(count),
+            .block => |block| block.drop_regs(count),
         }
     }
 
@@ -856,6 +893,13 @@ pub const Scope = union(enum) {
         switch (self) {
             .head => |head| return head.registers,
             .block => |block| return block.registers,
+        }
+    }
+
+    pub fn set_reg_count(self: @This(), count: u10) void {
+        switch (self) {
+            .head => |head| head.registers = count,
+            .block => |block| block.registers = count,
         }
     }
 };
@@ -940,6 +984,10 @@ pub const Compiler = struct {
 
                 // todo maybe allow scoped typing
                 var block = try Scope.create_block(self.allocator, scope, s.symbols);
+
+                if (self.in_function) {
+                    block.set_reg_count(block.param_count());
+                }
 
                 if (to_inline) {
                     block.block.inlining = true;
@@ -1647,7 +1695,8 @@ pub const Compiler = struct {
         } });
     }
 
-    fn generate_call(self: *@This(), node: *Node, scope: Scope, result: Address, arg_start: ?Address) !void {
+    fn generate_call(self: *@This(), node: *Node, scope: Scope, result: Address, extra: ?Address) !void {
+        _ = extra;
         const call = node.call;
         const fn_identity = scope.lookup_symbol(call.name).?;
 
@@ -1675,6 +1724,25 @@ pub const Compiler = struct {
             } });
         } else {
             unreachable;
+        }
+
+        var arg_start: ?Address = null;
+
+        if (call.arguments != null) {
+            defer scope.drop_regs(@intCast(u10, call.arguments.?.len));
+            arg_start = scope.get_reg().?;
+            const args = call.arguments.?;
+
+            const ree = try self.generate(args[0], scope, arg_start, null);
+            std.debug.assert(ree == null); // can't move, if you do we corrupt
+
+            if (args.len > 2) {
+                // max 255 params
+                var reg: [254]Address = [_]Address{Address.new_register(420)} ** 254;
+                for (1..args.len) |reg_i| {
+                    reg[reg_i] = scope.get_reg().?;
+                }
+            }
         }
 
         var kind_name: []const u8 = "";

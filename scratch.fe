@@ -1,11 +1,10 @@
-inner : Fn : fn() -> i64 {
+time : ExternFn : extern fn() -> i64;
+
+inner : Fn : fn(fib_count: i64) -> i64 {
     // fibonacci
     a : i64 = 1;
     b : i64 = 0;
     alternate : bool = false;
-
-    // set to the desired n-th fibonacci number
-    fib_count : i64 = 92;
 
     i : i64 = 1;
     while (i < fib_count) {
@@ -20,4 +19,11 @@ inner : Fn : fn() -> i64 {
     return a;
 }
 
-return inner();
+result : i64 = 0;
+
+
+result = inner(92);
+
+
+
+return result;

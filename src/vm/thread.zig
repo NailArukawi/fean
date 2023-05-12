@@ -214,19 +214,22 @@ pub const Thread = struct {
                 .call => {
                     const result = opcode.a();
                     const arg_start = opcode.b();
-                    _ = arg_start;
                     const callee = opcode.c();
                     const has_return = opcode.d();
+
                     const function = self.register[callee].function().internal;
+                    const args = self.register[arg_start .. function.arity + 1];
 
                     //function.body.debug(true);
 
                     if (has_return == 0) {
                         // call extern method with no return value
                         self.call_fn(function.body, 0) catch unreachable;
+                        @memcpy(self.register[1 .. function.arity + 1], args);
                     } else {
                         // call extern method with return value
                         self.call_fn(function.body, result) catch unreachable;
+                        @memcpy(self.register[1 .. function.arity + 1], args);
                     }
                 },
                 .call_extern => {
