@@ -34,6 +34,14 @@ pub const Fean = struct {
 
         return fean;
     }
+
+    pub fn call(self: *@This(), name_text: vm.Item, arguments: ?[]vm.Item) void {
+        self.thread.call(name_text, arguments);
+    }
+
+    pub inline fn result(self: *@This()) vm.Item {
+        return self.thread.register[0];
+    }
 };
 
 pub const FeanConfig = struct {

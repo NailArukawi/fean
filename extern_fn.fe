@@ -1,3 +1,7 @@
 zamn : ExternFn : extern fn() -> i64;
+print : ExternFn : extern fn(int_to_print: i64) -> void;
 
-return zamn();
+result : i64 = zamn();
+print(result);
+
+return result;

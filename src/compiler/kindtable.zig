@@ -51,12 +51,12 @@ pub const KindTable = struct {
         _ = try self.install("u8", null, 1, allocator);
         _ = try self.install("f64", null, 8, allocator);
         _ = try self.install("f32", null, 4, allocator);
-        _ = try self.install("dict", null, @sizeOf(Dict), allocator);
-        _ = try self.install("text", null, @sizeOf(Text), allocator);
+        _ = try self.install("void", null, @sizeOf(void), allocator);
         _ = try self.install("bool", null, @sizeOf(bool), allocator);
+        _ = try self.install("Dict", null, @sizeOf(Dict), allocator);
+        _ = try self.install("Text", null, @sizeOf(Text), allocator);
         _ = try self.install("Fn", null, FN_SIZE, allocator);
         _ = try self.install("ExternFn", null, EXTERN_FN_SIZE, allocator);
-        _ = try self.install("void", null, @sizeOf(void), allocator);
 
         return self;
     }

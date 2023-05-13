@@ -106,6 +106,17 @@ pub const Assembler = struct {
             i += try assembler.assemble_instr(instr, i);
         }
 
+        const end = assembler.op_count - 1;
+        const last: Opcode = assembler.result.chunk.code.items[end];
+        if (last.op != .ret) {
+            var opcode = Opcode.new();
+            opcode.op = Op.ret;
+
+            opcode.set_a(1);
+
+            try assembler.push_op(opcode);
+        }
+
         return assembler.result;
     }
 
@@ -140,6 +151,17 @@ pub const Assembler = struct {
             i += (self.assemble_instr(instr, i) catch unreachable);
         }
 
+        const end = self.op_count - 1;
+        const last: Opcode = self.result.chunk.code.items[end];
+        if (last.op != .ret) {
+            var opcode = Opcode.new();
+            opcode.op = Op.ret;
+
+            opcode.set_a(0);
+
+            try self.push_op(opcode);
+        }
+
         return new_result;
     }
 
@@ -161,23 +183,41 @@ pub const Assembler = struct {
 
                 try self.push_op(opcode);
             },
+            // todo mode
+            // todo no result
             .call => |c| {
                 var opcode = Opcode.new();
                 opcode.op = Op.call;
 
+                const has_args = (c.arg_start != null);
+
                 opcode.set_a(c.result.register());
-                opcode.set_b(c.arg_start.?.register()); // todo
+                if (has_args) {
+                    opcode.set_b(c.arg_start.?.register());
+                } else {
+                    opcode.set_b(0);
+                }
+
                 opcode.set_c(c.callee.register());
                 opcode.set_d(1); //todo
 
                 try self.push_op(opcode);
             },
+            // todo mode
+            // todo no result
             .call_extern => |ce| {
                 var opcode = Opcode.new();
                 opcode.op = Op.call_extern;
 
+                const has_args = (ce.arg_start != null);
+
                 opcode.set_a(ce.result.register());
-                opcode.set_b(0); // todo
+                opcode.set_a(ce.result.register());
+                if (has_args) {
+                    opcode.set_b(ce.arg_start.?.register());
+                } else {
+                    opcode.set_b(0);
+                }
                 opcode.set_c(ce.callee.register());
                 opcode.set_d(1); //todo
 
@@ -648,6 +688,8 @@ pub const Assembler = struct {
                 const block_addr = fta.block.?.raw();
                 const fn_body = @intToPtr(*IRBlock, block_addr);
                 const assembled_fn_body = try self.assemble_fn(fn_body);
+
+                fn_body.destroy();
 
                 fta.memory.internal.body = assembled_fn_body.chunk;
             },

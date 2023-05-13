@@ -323,28 +323,34 @@ pub const Instr = union(enum) {
     // extended
     extended,
 
-    pub fn debug(self: @This(), buffer: *[512]u8) ![]const u8 {
+    pub fn debug(self: @This(), buffer: *[512]u8) !?[]const u8 {
         switch (self) {
             .no_op => return "",
-            .ret => return std.fmt.bufPrint(buffer, "return", .{}),
+            .ret => return try std.fmt.bufPrint(buffer, "return", .{}),
             .call => |c| {
                 const fn_pos = c.callee.register();
                 const result = c.result.register();
                 if (c.arg_start == null) {
-                    return std.fmt.bufPrint(buffer, "call\treg[{}]() -> reg[{}]", .{ fn_pos, result });
+                    return try std.fmt.bufPrint(buffer, "call\treg[{}]() -> reg[{}]", .{ fn_pos, result });
                 } else {
-                    return std.fmt.bufPrint(buffer, "call\treg[{}](start reg:{}) -> reg[{}]", .{ fn_pos, c.arg_start.?.register(), result });
+                    return try std.fmt.bufPrint(buffer, "call\treg[{}](start reg:{}) -> reg[{}]", .{ fn_pos, c.arg_start.?.register(), result });
                 }
             },
             .call_extern => |ce| {
+                const fn_pos = ce.callee.register();
                 const result = ce.result.register();
-                return std.fmt.bufPrint(buffer, "call\textern_fn() -> reg[{}]", .{result});
+
+                if (ce.arg_start == null) {
+                    return try std.fmt.bufPrint(buffer, "call\textern reg[{}]() -> reg[{}]", .{ fn_pos, result });
+                } else {
+                    return try std.fmt.bufPrint(buffer, "call\textern reg[{}](start reg:{}) -> reg[{}]", .{ fn_pos, ce.arg_start.?.register(), result });
+                }
             },
             .invoke => unreachable,
             .invoke_extern => unreachable,
             .make_closure => unreachable,
-            .dive => return std.fmt.bufPrint(buffer, "dive", .{}),
-            .ascend => return std.fmt.bufPrint(buffer, "ascend", .{}),
+            .dive => return try std.fmt.bufPrint(buffer, "dive", .{}),
+            .ascend => return try std.fmt.bufPrint(buffer, "ascend", .{}),
 
             // Memory
             .load_true => |lt| {
@@ -392,7 +398,7 @@ pub const Instr = union(enum) {
             // meta
             .block => |b| {
                 for (b.body.as_slice(), 0..) |ir, i| {
-                    std.debug.print("   [{}]:\t({s})\n", .{ i, try ir.debug(buffer) });
+                    std.debug.print("   [{}]:\t({s})\n", .{ i, (try ir.debug(buffer)).? });
                 }
                 return "Block end";
             },
@@ -410,15 +416,15 @@ pub const Instr = union(enum) {
                 const adress_b_offset = result.len + adress_a.len;
                 const adress_b = try a.b.debug(nested_buffer[adress_b_offset..nested_size]);
 
-                return std.fmt.bufPrint(buffer, "{s}:\t{s} = {s}, {s}", .{ @tagName(self), result, adress_a, adress_b });
+                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = {s}, {s}", .{ @tagName(self), result, adress_a, adress_b });
             },
 
             .inc_i64, .inc_u64, .inc_i32, .inc_u32, .inc_i16, .inc_u16, .inc_i8, .inc_u8, .inc_f64, .inc_f32 => |to_inc| {
-                return std.fmt.bufPrint(buffer, "{s}:\tstack[{}]++", .{ @tagName(self), to_inc.upvalue() });
+                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}]++", .{ @tagName(self), to_inc.upvalue() });
             },
 
             .dec_i64, .dec_u64, .dec_i32, .dec_u32, .dec_i16, .dec_u16, .dec_i8, .dec_u8, .dec_f64, .dec_f32 => |to_dec| {
-                return std.fmt.bufPrint(buffer, "{s}:\tstack[{}]--", .{ @tagName(self), to_dec.upvalue() });
+                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}]--", .{ @tagName(self), to_dec.upvalue() });
             },
 
             // Control flow (21)
@@ -432,7 +438,7 @@ pub const Instr = union(enum) {
                 const adress_b_offset = result.len + adress_a.len;
                 const adress_b = try lt.b.debug(nested_buffer[adress_b_offset..nested_size]);
 
-                return std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
+                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
             },
 
             .less_equal_u64, .less_equal_u32, .less_equal_u16, .less_equal_u8, .less_equal_i64, .less_equal_i32, .less_equal_i16, .less_equal_i8, .less_equal_f64, .less_equal_f32 => |le| {
@@ -445,7 +451,7 @@ pub const Instr = union(enum) {
                 const adress_b_offset = result.len + adress_a.len;
                 const adress_b = try le.b.debug(nested_buffer[adress_b_offset..nested_size]);
 
-                return std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
+                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
             },
 
             .not => |n| {
@@ -455,7 +461,7 @@ pub const Instr = union(enum) {
                 const dest = try n.dest.debug(&nested_buffer);
                 const source_offset = dest.len;
                 const source = try n.source.debug(nested_buffer[source_offset..nested_size]);
-                return std.fmt.bufPrint(buffer, "{s}:\t{s} = !{s}", .{ @tagName(self), dest, source });
+                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = !{s}", .{ @tagName(self), dest, source });
             },
 
             .if_jmp => |ij| {
@@ -465,7 +471,7 @@ pub const Instr = union(enum) {
                 const condition = try ij.condition.debug(&nested_buffer);
                 const offset_offset = condition.len;
                 const offset = try ij.offset.debug(nested_buffer[offset_offset..nested_size]);
-                return std.fmt.bufPrint(buffer, "{s}:\tif({s}) jump to {s}", .{ @tagName(self), condition, offset });
+                return try std.fmt.bufPrint(buffer, "{s}:\tif({s}) jump to {s}", .{ @tagName(self), condition, offset });
             },
 
             .jmp => |j| {
@@ -473,7 +479,7 @@ pub const Instr = union(enum) {
                 var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
 
                 const offset = try j.offset.debug(&nested_buffer);
-                return std.fmt.bufPrint(buffer, "{s}:\tjump to {s}", .{ @tagName(self), offset });
+                return try std.fmt.bufPrint(buffer, "{s}:\tjump to {s}", .{ @tagName(self), offset });
             },
 
             .destination => |a| {
@@ -482,11 +488,12 @@ pub const Instr = union(enum) {
 
                 const dest = try a.debug(&nested_buffer);
 
-                return std.fmt.bufPrint(buffer, "{s}:\t{s}", .{ @tagName(self), dest });
+                return try std.fmt.bufPrint(buffer, "{s}:\t{s}", .{ @tagName(self), dest });
             },
+            .fn_to_assemble => return null,
 
             else => {
-                return std.fmt.bufPrint(buffer, "{s}:\tUNKNOWN", .{@tagName(self)});
+                return try std.fmt.bufPrint(buffer, "{s}:\tUNKNOWN", .{@tagName(self)});
             },
         }
     }
@@ -494,8 +501,6 @@ pub const Instr = union(enum) {
 
 pub const IRBlock = struct {
     parent: Scope,
-
-    uptable: List(Symbol),
     body: Stack(Instr),
 
     symbols: ?*SymbolTable,
@@ -511,12 +516,15 @@ pub const IRBlock = struct {
 
         result.* = @This(){
             .parent = parent,
-            .uptable = List(Symbol).init(allocator),
             .body = try Stack(Instr).create(allocator, 32),
             .symbols = symbols,
         };
 
         return result;
+    }
+
+    pub fn destroy(self: *@This()) void {
+        self.body.destroy();
     }
 
     pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?Symbol {
@@ -728,8 +736,13 @@ pub const IR = struct {
         }
 
         std.debug.print("\n[Program]:\n", .{});
-        for (self.body.as_slice(), 0..) |ir, i| {
-            std.debug.print("[{}]:\t({s})\n", .{ i, try ir.debug(buffer) });
+        var i: usize = 0;
+        for (self.body.as_slice()) |ir| {
+            const ir_text = try ir.debug(buffer);
+            if (ir_text != null) {
+                std.debug.print("[{}]:\t({s})\n", .{ i, ir_text.? });
+                i += 1;
+            }
         }
     }
 };
@@ -1795,6 +1808,15 @@ pub const Compiler = struct {
 
                 return null;
             },
+            .text => |text_raw| {
+                const text = try self.copy_text(text_raw);
+                const text_lit = try self.push_literal(.{ .object = text }, .Text);
+
+                try scope.push_instr(.{ .load_literal_obj = .{
+                    .result = result,
+                    .a = text_lit,
+                } });
+            },
             .identifier => |name_raw| {
                 const symbol = scope.lookup_symbol(name_raw);
 
@@ -1854,7 +1876,7 @@ pub const Compiler = struct {
                     else => unreachable,
                 }
             },
-            else => unreachable,
+            else => std.debug.panic("generate literal does not implement: {s}\n", .{@tagName(node.literal.data)}),
         }
 
         return null;

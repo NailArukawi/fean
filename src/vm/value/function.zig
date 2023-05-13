@@ -28,7 +28,12 @@ pub const ExternFunction = extern struct {
     body: *const fn (args: []Item, result: ?*Item) void,
 };
 
-pub const Method = extern union {
+pub const Method = struct {
+    is_intern: bool,
+    method: MethodBody,
+};
+
+pub const MethodBody = extern union {
     internal: *InternalFunction,
     external: *ExternMethod,
 };

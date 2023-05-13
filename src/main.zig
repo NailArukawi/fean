@@ -30,6 +30,8 @@ fn lookup_fn(name: []const u8) ?fean_fn {
         return &zamn;
     } else if (std.mem.eql(u8, "time", name)) {
         return &time;
+    } else if (std.mem.eql(u8, "print", name)) {
+        return &print;
     }
 
     unreachable;
@@ -37,8 +39,13 @@ fn lookup_fn(name: []const u8) ?fean_fn {
 
 fn zamn(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
     _ = args;
-    const z: i64 = 42069;
+    const z: i64 = 420691337;
     result.?.* = fean.vm.Item.from(i64, z);
+}
+
+fn print(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
+    _ = result;
+    std.debug.print("[Fean]: {}\n", .{args[0].i64});
 }
 
 var time_stamp: ?i128 = null;

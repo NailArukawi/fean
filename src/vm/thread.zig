@@ -183,6 +183,14 @@ pub const Thread = struct {
         return;
     }
 
+    pub fn call(self: *@This(), function: Item, arguments: ?[]Item) void {
+        const to_call = function.function();
+        self.call_fn(to_call.body, 0) catch unreachable;
+        if (arguments != null) {
+            @memcpy(self.register[1 .. to_call.arity + 1], arguments.?);
+        }
+    }
+
     pub fn execute(self: *@This()) void {
         //self.chunk.debug(false);
         while (true) {
@@ -218,7 +226,7 @@ pub const Thread = struct {
                     const has_return = opcode.d();
 
                     const function = self.register[callee].function().internal;
-                    const args = self.register[arg_start .. function.arity + 1];
+                    const args = self.register[arg_start .. arg_start + function.arity];
 
                     //function.body.debug(true);
 

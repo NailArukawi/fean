@@ -9,7 +9,8 @@ pub const Opcode = @import("opcode.zig").Opcode;
 pub const Chunk = @import("chunk.zig").Chunk;
 
 // Heap
-pub const Heap = @import("heap.zig").Heap;
+pub const heap = @import("heap.zig");
+pub const Heap = heap.Heap;
 pub const Ref = @import("heap.zig").Ref;
 
 // Global

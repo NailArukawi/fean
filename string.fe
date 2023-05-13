@@ -1,0 +1,2 @@
+original : text : "Hello, World";
+copy : text = original.clone();
