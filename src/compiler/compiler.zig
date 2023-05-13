@@ -1618,16 +1618,60 @@ pub const Compiler = struct {
                         .a = lhs,
                         .b = rhs,
                     } });
+                } else {
+                    unreachable;
                 }
             },
             .minus => {
-                unreachable;
+                if (mem.eql(u8, kind, "u64")) {
+                    try scope.push_instr(Instr{ .sub_u64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else if (mem.eql(u8, kind, "i64")) {
+                    try scope.push_instr(Instr{ .sub_i64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else {
+                    unreachable;
+                }
             },
             .slash => {
-                unreachable;
+                if (mem.eql(u8, kind, "u64")) {
+                    try scope.push_instr(Instr{ .div_u64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else if (mem.eql(u8, kind, "i64")) {
+                    try scope.push_instr(Instr{ .div_i64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else {
+                    unreachable;
+                }
             },
             .star => {
-                unreachable;
+                if (mem.eql(u8, kind, "u64")) {
+                    try scope.push_instr(Instr{ .mul_u64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else if (mem.eql(u8, kind, "i64")) {
+                    try scope.push_instr(Instr{ .mul_i64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else {
+                    unreachable;
+                }
             },
             .less, .greater => {
                 if (exp.op.data.symbol == .greater) {

@@ -19,8 +19,7 @@ pub fn main() !void {
     defer allocator.free(file_buffer);
 
     var vm = try fean.Fean.create(file_buffer, config);
-
-    std.debug.print("We got: {}\n", .{vm.thread.stack_view[0].i64});
+    _ = vm;
 }
 
 const fean_fn = *const fn (args: []fean.vm.Item, result: ?*fean.vm.Item) void;
@@ -30,8 +29,8 @@ fn lookup_fn(name: []const u8) ?fean_fn {
         return &zamn;
     } else if (std.mem.eql(u8, "time", name)) {
         return &time;
-    } else if (std.mem.eql(u8, "print", name)) {
-        return &print;
+    } else if (std.mem.eql(u8, "print_i64", name)) {
+        return &print_i64;
     }
 
     unreachable;
@@ -43,7 +42,7 @@ fn zamn(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
     result.?.* = fean.vm.Item.from(i64, z);
 }
 
-fn print(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
+fn print_i64(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
     _ = result;
     std.debug.print("[Fean]: {}\n", .{args[0].i64});
 }
@@ -51,13 +50,12 @@ fn print(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
 var time_stamp: ?i128 = null;
 
 fn time(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
-    _ = result;
     _ = args;
     if (time_stamp == null) {
         time_stamp = std.time.nanoTimestamp();
     } else {
         const delta = std.time.nanoTimestamp() - time_stamp.?;
-        std.debug.print("Time elapsed: {} ns\n", .{delta});
+        result.?.* = fean.vm.Item.from(i64, @intCast(i64, delta));
         time_stamp = null;
     }
 }

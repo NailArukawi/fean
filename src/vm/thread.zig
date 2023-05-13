@@ -147,17 +147,17 @@ pub const Thread = struct {
     }
 
     pub fn call_fn(self: *@This(), body: *Chunk, result: u10) !void {
-        self.stack_base += (self.depth + 1);
-
         const frame = CallFrame{
             .function = self.chunk,
             .ip = self.ip,
             .depth = self.depth,
+            .base = self.stack_base,
             .result = result,
         };
 
         self.chunk = body;
         self.ip = 0;
+        self.stack_base += (self.depth + 1);
         self.depth = 0;
 
         try self.recalc_stack();
@@ -168,11 +168,10 @@ pub const Thread = struct {
 
     pub fn ret_fn(self: *@This()) !void {
         var frame = self.call_stack.pop();
-        const new_base = (self.stack_base - self.depth - 1);
 
         self.chunk = frame.function;
         self.ip = frame.ip;
-        self.stack_base = new_base;
+        self.stack_base = frame.base;
         self.depth = frame.depth;
 
         const result = self.register[0];

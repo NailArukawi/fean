@@ -12,6 +12,7 @@ pub const CallFrame = struct {
     function: *Chunk,
     ip: usize,
     depth: usize,
+    base: usize,
     result: u10,
 };
 

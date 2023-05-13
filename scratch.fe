@@ -1,4 +1,5 @@
-print : ExternFn : extern fn(int_to_print: i64) -> void;
+print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
+time : ExternFn : extern fn() -> i64;
 
 fib : Fn : fn(fib_count: i64) -> i64 {
     // fibonacci
@@ -19,4 +20,12 @@ fib : Fn : fn(fib_count: i64) -> i64 {
     return a;
 }
 
-print(fib(92));
+time();
+{
+    j : i64 = 1;
+    while (j < 92) {
+        fib(j);
+        j+=1;
+    }
+}
+print_i64(time());
