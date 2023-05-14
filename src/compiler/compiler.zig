@@ -1038,6 +1038,10 @@ pub const Compiler = struct {
                     try scope.push_instr(Instr{ .block = block.block });
                 }
             },
+            .structure => |s| {
+                _ = s;
+                unreachable;
+            },
             .variable => {
                 if (scope.is_head()) {
                     _ = try self.generate_global_variable(node, scope);

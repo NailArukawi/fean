@@ -1,4 +1,4 @@
-print_f64 : ExternFn : extern fn(to_print: f64) -> void;
-
-pi : f64 = 3.14;
-print_f64(pi*pi);
+struct Point {
+    x: f64,
+    y: f64
+}

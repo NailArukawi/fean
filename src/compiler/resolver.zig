@@ -127,6 +127,9 @@ pub const Resolver = struct {
                     try self.expand_visit(scope_node, &head);
                 }
             },
+            .structure => |s| {
+                _ = s;
+            },
             .variable => |v| {
                 if (v.value != null) try self.expand_visit(v.value.?, scope);
             },
@@ -244,6 +247,10 @@ pub const Resolver = struct {
                 }
 
                 // todo maybe allow a scope to be a kind
+                return null;
+            },
+            .structure => |s| {
+                _ = s;
                 return null;
             },
             .variable => |v| {
@@ -483,6 +490,9 @@ pub const Resolver = struct {
                 for (s.statments.?) |scope_node| {
                     try self.symbol_visit(scope_node, &head);
                 }
+            },
+            .structure => |s| {
+                _ = s;
             },
             .variable => |v| {
                 switch (v.kind.?) {

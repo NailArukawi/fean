@@ -10,6 +10,7 @@ const Scanner = @import("scanner.zig").Scanner;
 pub const AST = @import("ast.zig").AST;
 pub const Node = @import("ast.zig").Node;
 pub const Parameter = @import("ast.zig").Parameter;
+pub const Field = @import("ast.zig").Field;
 pub const FunctionBody = @import("ast.zig").FunctionBody;
 
 pub const KindTable = @import("kindtable.zig").KindTable;
@@ -104,7 +105,10 @@ pub const Parser = struct {
     }
 
     fn declaration(self: *@This(), scope: *Node) *Node {
-        // variable (X: num)
+        if (self.check(.Struct) and self.check_next(.identifier)) {
+            _ = self.pop().?;
+            return self.declaration_struct(scope);
+        }
         if (self.check(.identifier) // X
         and self.check_next(.colon) // :
         and self.check_ahead(.identifier, 2) // num
@@ -117,6 +121,50 @@ pub const Parser = struct {
             return self.declaration_variable(scope, true);
         }
         return self.statment(scope);
+    }
+
+    fn declaration_struct(self: *@This(), scope: *Node) *Node {
+        _ = scope;
+        const struct_name = self.pop().?;
+        self.consume_kind(.colon, "struct is missing { to start struct body");
+        const fields = self.struct_fields();
+
+        var result = self.allocator.create(Node) catch unreachable;
+
+        result.* = Node{ .structure = .{
+            .name = struct_name.data.identifier,
+            .symbol = null,
+            .this = null,
+            .fields = fields,
+        } };
+
+        return result;
+    }
+
+    fn struct_fields(self: *@This()) []Field {
+        var fields = Stack(Field).create(self.allocator, 2) catch unreachable;
+
+        while (!self.check(.curley_right)) {
+            if (self.check(.comma)) {
+                _ = self.pop().?;
+            }
+
+            self.check_err(.identifier, "expected a name for the struct field");
+            const field_name = self.pop().?;
+            self.consume_kind(.colon, "field name is missing trailing :");
+            self.check_err(.identifier, "expected a type for the struct field");
+            const field_kind_name = self.pop().?;
+            fields.push(Field{ .name = field_name.data.identifier, .symbol = null, .kind = SymbolKind{ .unresolved = field_kind_name.data.identifier } }) catch unreachable;
+        }
+        _ = self.pop().?;
+
+        if (fields.count() == 0) {
+            fields.destroy();
+        }
+
+        fields.shrink_to_fit() catch unreachable;
+
+        return fields.as_slice();
     }
 
     fn declaration_variable(self: *@This(), scope: *Node, infered: bool) *Node {
@@ -234,7 +282,7 @@ pub const Parser = struct {
         self.consume_kind(.paren_left, "expected fn parameters to start with a (");
         const param_count = self.parameter_count();
         var parameters = self.allocator.alloc(Parameter, param_count) catch unreachable;
-        self.parameter_parse(&parameters, scope);
+        self.parameter_parse(&parameters);
         self.consume_kind(.paren_right, "expected fn parameters to end with a )");
 
         // return
@@ -295,8 +343,7 @@ pub const Parser = struct {
         return count;
     }
 
-    inline fn parameter_parse(self: *@This(), write_to: *[]Parameter, scope: *Node) void {
-        _ = scope;
+    inline fn parameter_parse(self: *@This(), write_to: *[]Parameter) void {
         var i: usize = 0;
         while (!self.check(.paren_right)) {
             // parameter
