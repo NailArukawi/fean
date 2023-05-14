@@ -66,10 +66,7 @@ pub const Node = union(enum) {
             }
 
             if (self.symbols == null) {
-                self.symbols = try SymbolTable.create(allocator);
-                self.symbols.?.name = name;
-                self.symbols.?.kind = kind;
-                self.symbols.?.size = size;
+                self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
                 self.symbols.?.binding = 0;
 
                 self.symbols.?.next = null;
@@ -132,13 +129,13 @@ pub const Node = union(enum) {
     variable: struct {
         name: []const u8,
         symbol: ?Symbol,
-        kind: SymbolKind,
+        kind: ?SymbolKind,
         value: ?*Node,
     },
     constant: struct {
         name: []const u8,
         symbol: ?Symbol,
-        kind: SymbolKind,
+        kind: ?SymbolKind,
         value: *Node,
     },
     assignment: struct {

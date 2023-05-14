@@ -109,15 +109,24 @@ pub const Parser = struct {
         and self.check_next(.colon) // :
         and self.check_ahead(.identifier, 2) // num
         ) {
-            return self.declaration_variable(scope);
+            return self.declaration_variable(scope, false);
+        } else if (self.check(.identifier) // X
+        and self.check_next(.colon) // :
+        and (self.check_ahead(.colon, 2) or self.check_ahead(.equal, 2)) // : or =
+        ) {
+            return self.declaration_variable(scope, true);
         }
         return self.statment(scope);
     }
 
-    fn declaration_variable(self: *@This(), scope: *Node) *Node {
+    fn declaration_variable(self: *@This(), scope: *Node, infered: bool) *Node {
         const name = self.pop().?;
         self.consume_kind(.colon, "variable/constant missing trailing :");
-        const kind_name = self.pop().?;
+        var kind: ?SymbolKind = null;
+        if (!infered) {
+            const kind_name = self.pop().?;
+            kind = SymbolKind{ .unresolved = kind_name.data.identifier };
+        }
 
         var result = self.allocator.create(Node) catch unreachable;
 
@@ -127,39 +136,42 @@ pub const Parser = struct {
             result.* = Node{
                 .constant = .{
                     .name = name.data.identifier,
-                    .kind = SymbolKind{ .unresolved = kind_name.data.identifier },
+                    .kind = kind,
                     .value = self.statment(scope),
                     .symbol = null,
                 },
             };
 
-            if (std.mem.eql(u8, result.constant.kind.unresolved, "ExternFn")) {
+            const constant = result.constant;
+            if (constant.value.* == .function and constant.value.function.is_extern) {
                 result.constant.value.function.body.name = result.constant.name;
             }
         } else if (self.of_kind(.equal)) {
             result.* = Node{
                 .variable = .{
                     .name = name.data.identifier,
-                    .kind = SymbolKind{ .unresolved = kind_name.data.identifier },
+                    .kind = kind,
                     .value = self.statment(scope),
                     .symbol = null,
                 },
             };
 
-            if (std.mem.eql(u8, result.variable.kind.unresolved, "ExternFn")) {
+            const variable = result.variable;
+            if (variable.value != null and variable.value.?.* == .function and variable.value.?.function.is_extern) {
                 result.variable.value.?.function.body.name = result.variable.name;
             }
         } else if (self.of_kind(.semi_colon)) {
             result.* = Node{
                 .variable = .{
                     .name = name.data.identifier,
-                    .kind = SymbolKind{ .unresolved = kind_name.data.identifier },
+                    .kind = kind,
                     .value = null,
                     .symbol = null,
                 },
             };
 
-            if (std.mem.eql(u8, result.variable.kind.unresolved, "ExternFn")) {
+            const variable = result.variable;
+            if (variable.value != null and variable.value.?.* == .function and variable.value.?.function.is_extern) {
                 result.variable.value.?.function.body.name = result.variable.name;
             }
         } else {
@@ -581,31 +593,23 @@ pub const Parser = struct {
     }
 
     inline fn arguments(self: *@This(), scope: *Node) ?[]*Node {
-        var count: usize = 0;
-        var cursor: usize = 0;
+        var params = Stack(*Node).create(self.allocator, 255) catch unreachable;
 
-        if (!self.check(.paren_right)) {
-            count = 1;
-        }
-
-        while (!self.check_ahead(.paren_right, cursor)) {
-            if (self.check_ahead(.comma, cursor)) {
-                count += 1;
-            }
-            cursor += 1;
-        }
-
-        if (count == 0) return null;
-
-        var i: usize = 0;
-        var write_to = self.allocator.alloc(*Node, count) catch unreachable;
         while (!self.check(.paren_right)) {
-            var argument = self.expression(scope);
-            write_to[i] = argument;
-            i += 1;
+            if (self.check(.comma)) {
+                _ = self.pop().?;
+            }
+
+            params.push(self.expression(scope)) catch unreachable;
         }
 
-        return write_to;
+        if (params.count() == 0) {
+            params.destroy();
+        }
+
+        params.shrink_to_fit() catch unreachable;
+
+        return params.as_slice();
     }
 
     fn primary(self: *@This(), scope: *Node) *Node {

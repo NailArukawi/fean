@@ -20,7 +20,7 @@ pub const SymbolTable = struct {
     depth: usize = 0,
     next: ?*@This(),
 
-    pub fn create(allocator: Allocator) !*@This() {
+    fn create(allocator: Allocator) !*@This() {
         var result = try allocator.create(@This());
 
         result.size = 0;
@@ -51,6 +51,19 @@ pub const SymbolTable = struct {
         installee.binding = 0;
         installee.depth = 0;
         self.next = installee;
+        return installee;
+    }
+
+    pub fn create_head(allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !*@This() {
+        const installee = try allocator.create(@This());
+        installee.name = name;
+        installee.kind = kind;
+        installee.size = size;
+        installee.next = null;
+        installee.global = false;
+        installee.param = false;
+        installee.binding = 0;
+        installee.depth = 0;
         return installee;
     }
 

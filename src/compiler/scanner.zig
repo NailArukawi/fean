@@ -250,10 +250,6 @@ pub const Scanner = struct {
                 _ = self.pop();
                 return Token.new_symbol(.variable_asignment, self.cursor);
             },
-            ':' => {
-                _ = self.pop();
-                return Token.new_symbol(.constant_asignment, self.cursor);
-            },
             else => return Token.new_symbol(.colon, self.cursor),
         }
     }
@@ -400,6 +396,8 @@ pub const Scanner = struct {
                             const div = std.math.pow(f64, 10, depth);
                             part += @intToFloat(f64, ascii_to_int(self.pop())) / div;
                             depth += 1;
+                        } else {
+                            break;
                         }
                     }
                     return Token.new_decimal(@intToFloat(f64, whole) + part, self.cursor);

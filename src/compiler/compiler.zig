@@ -699,7 +699,14 @@ pub const IR = struct {
                 .i32 => unreachable,
                 .i16 => unreachable,
                 .i8 => unreachable,
-                .f64 => unreachable,
+                .f64 => {
+                    const too_print = item.f64;
+                    std.debug.print("[{} : {s}]: {}\n", .{
+                        i,
+                        @tagName(lk),
+                        too_print,
+                    });
+                },
                 .f32 => unreachable,
                 .bool => unreachable,
                 .Text => {
@@ -1042,7 +1049,7 @@ pub const Compiler = struct {
                 if (scope.is_head()) {
                     _ = try self.generate_global_constant(node, scope);
                 } else {
-                    _ = try self.generate_local_variable(node, scope);
+                    _ = try self.generate_local_constant(node, scope);
                 }
             },
             .assignment => try self.generate_assignment(node, scope),
@@ -1169,12 +1176,41 @@ pub const Compiler = struct {
                     return null;
                 } else if (op == .plus_plus) {
                     const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
-                    const binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+                    var binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
                     switch (symbol.kind.?) {
                         .resolved => |k| kind_name = k.name,
                         .unresolved => |n| kind_name = n,
+                    }
+
+                    var global_tmp: ?Address = null;
+                    var global_name: ?Address = null;
+                    if (symbol.global) {
+                        var obj = try self.copy_text(symbol.name);
+                        global_tmp = scope.get_temp().?;
+                        defer scope.drop_temp();
+
+                        // the stack adress for the lookup name of the global variable
+                        global_name = scope.get_temp().?;
+                        defer scope.drop_temp();
+
+                        const lit = try self.push_literal(.{
+                            .object = obj,
+                        }, .Text);
+
+                        try scope.push_instr(.{ .load_literal = .{
+                            .result = global_name.?,
+                            .a = lit,
+                        } });
+
+                        try scope.push_instr(.{ .load_global = .{
+                            .a = global_name.?,
+                            .result = global_tmp.?,
+                        } });
+
+                        const up_adress: u56 = @intCast(u56, global_tmp.?.temporary() + (self.depth * 1024));
+                        binding = Address.new_upvalue(up_adress);
                     }
 
                     if (mem.eql(u8, kind_name, "u64")) {
@@ -1196,15 +1232,52 @@ pub const Compiler = struct {
                     } else if (mem.eql(u8, kind_name, "f32")) {
                         try scope.push_instr(Instr{ .inc_f32 = binding });
                     } else unreachable; // todo add custom inc methods
+
+                    if (symbol.global) {
+                        try scope.push_instr(.{ .store_global = .{
+                            .a = global_tmp.?,
+                            .result = global_name.?,
+                        } });
+                    }
+
                     return null;
                 } else if (op == .minus_minus) {
                     const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
-                    const binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+                    var binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
                     switch (symbol.kind.?) {
                         .resolved => |k| kind_name = k.name,
                         .unresolved => |n| kind_name = n,
+                    }
+
+                    var global_tmp: ?Address = null;
+                    var global_name: ?Address = null;
+                    if (symbol.global) {
+                        var obj = try self.copy_text(symbol.name);
+                        global_tmp = scope.get_temp().?;
+                        defer scope.drop_temp();
+
+                        // the stack adress for the lookup name of the global variable
+                        global_name = scope.get_temp().?;
+                        defer scope.drop_temp();
+
+                        const lit = try self.push_literal(.{
+                            .object = obj,
+                        }, .Text);
+
+                        try scope.push_instr(.{ .load_literal = .{
+                            .result = global_name.?,
+                            .a = lit,
+                        } });
+
+                        try scope.push_instr(.{ .load_global = .{
+                            .a = global_name.?,
+                            .result = global_tmp.?,
+                        } });
+
+                        const up_adress: u56 = @intCast(u56, global_tmp.?.temporary() + (self.depth * 1024));
+                        binding = Address.new_upvalue(up_adress);
                     }
 
                     if (mem.eql(u8, kind_name, "u64")) {
@@ -1226,6 +1299,14 @@ pub const Compiler = struct {
                     } else if (mem.eql(u8, kind_name, "f32")) {
                         try scope.push_instr(Instr{ .dec_f32 = binding });
                     } else unreachable; // todo add custom dec methods
+
+                    if (symbol.global) {
+                        try scope.push_instr(.{ .store_global = .{
+                            .a = global_tmp.?,
+                            .result = global_name.?,
+                        } });
+                    }
+
                     return null;
                 }
                 unreachable;
@@ -1404,6 +1485,18 @@ pub const Compiler = struct {
         });
     }
 
+    fn generate_local_constant(self: *@This(), node: *Node, scope: Scope) !void {
+        const constant = node.constant;
+        const register = scope.get_reg().?;
+
+        // todo maybe try to resolve the kind one last time?
+        var symbol = scope.lookup_symbol(constant.name).?;
+
+        symbol.binding = register.register();
+        symbol.depth = self.depth;
+
+        _ = try self.generate(constant.value, scope, register, null);
+    }
     fn generate_assignment(self: *@This(), node: *Node, scope: Scope) !void {
         const assignment = node.assignment;
         const symbol = scope.lookup_symbol(assignment.name).?;
@@ -1618,6 +1711,12 @@ pub const Compiler = struct {
                         .a = lhs,
                         .b = rhs,
                     } });
+                } else if (mem.eql(u8, kind, "f64")) {
+                    try scope.push_instr(Instr{ .add_f64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
                 } else {
                     unreachable;
                 }
@@ -1631,6 +1730,12 @@ pub const Compiler = struct {
                     } });
                 } else if (mem.eql(u8, kind, "i64")) {
                     try scope.push_instr(Instr{ .sub_i64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else if (mem.eql(u8, kind, "f64")) {
+                    try scope.push_instr(Instr{ .sub_f64 = .{
                         .result = result,
                         .a = lhs,
                         .b = rhs,
@@ -1652,6 +1757,12 @@ pub const Compiler = struct {
                         .a = lhs,
                         .b = rhs,
                     } });
+                } else if (mem.eql(u8, kind, "f64")) {
+                    try scope.push_instr(Instr{ .div_f64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
                 } else {
                     unreachable;
                 }
@@ -1665,6 +1776,12 @@ pub const Compiler = struct {
                     } });
                 } else if (mem.eql(u8, kind, "i64")) {
                     try scope.push_instr(Instr{ .mul_i64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else if (mem.eql(u8, kind, "f64")) {
+                    try scope.push_instr(Instr{ .mul_f64 = .{
                         .result = result,
                         .a = lhs,
                         .b = rhs,
@@ -1688,6 +1805,12 @@ pub const Compiler = struct {
                     } });
                 } else if (mem.eql(u8, kind, "i64")) {
                     try scope.push_instr(Instr{ .less_than_i64 = .{
+                        .result = result,
+                        .a = lhs,
+                        .b = rhs,
+                    } });
+                } else if (mem.eql(u8, kind, "f64")) {
+                    try scope.push_instr(Instr{ .less_than_f64 = .{
                         .result = result,
                         .a = lhs,
                         .b = rhs,
@@ -1790,14 +1913,15 @@ pub const Compiler = struct {
             arg_start = scope.get_reg().?;
             const args = call.arguments.?;
 
-            const ree = try self.generate(args[0], scope, arg_start, null);
+            var ree = try self.generate(args[0], scope, arg_start, null);
             std.debug.assert(ree == null); // can't move, if you do we corrupt
 
-            if (args.len > 2) {
-                // max 255 params
-                var reg: [254]Address = [_]Address{Address.new_register(420)} ** 254;
+            if (args.len > 1) {
                 for (1..args.len) |reg_i| {
-                    reg[reg_i] = scope.get_reg().?;
+                    const reg = scope.get_reg().?;
+                    ree = try self.generate(args[reg_i], scope, reg, null);
+                    std.debug.assert(ree == null); // can't move, if you do we corrupt
+
                 }
             }
         }

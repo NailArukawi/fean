@@ -1,0 +1,11 @@
+print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
+
+cube_area : Fn : fn(x: i64, y: i64, z: i64) -> i64 {
+    return x * y * z;
+}
+
+i : i64 = 1;
+while (i < 33) {
+    print_i64(cube_area(i, i, i));
+    i++;
+}

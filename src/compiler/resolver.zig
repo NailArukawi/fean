@@ -60,6 +60,10 @@ const Scope = struct {
     }
 
     pub fn install_symbol(self: *@This(), name: []const u8, kind: ?SymbolKind, size: usize, allocator: Allocator) !Symbol {
+        if (self.symbols == null) {
+            self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
+            return self.symbols.?;
+        }
         return self.symbols.?.install(allocator, name, kind, size);
     }
 
@@ -151,10 +155,23 @@ pub const Resolver = struct {
                     for (func.params, 1..) |param, i| {
                         // todo maybe dupe before cleanup
                         // todo size
-                        var param_symbol = try fn_symbol.install_symbol(param.name, param.kind, 42069, self.allocator);
+                        var kind: SymbolKind = undefined;
+                        if (param.kind == .unresolved) {
+                            const found = scope.lookup_kind(param.kind.unresolved) orelse {
+                                kind = param.kind;
+                                break;
+                            };
+                            kind = SymbolKind{ .resolved = found };
+                        } else {
+                            kind = param.kind;
+                        }
+                        var param_symbol = try fn_symbol.install_symbol(param.name, kind, 42069, self.allocator);
                         param_symbol.*.param = true;
                         param_symbol.*.binding = @intCast(u10, i);
                     }
+
+                    func.body.body.scope.symbols = fn_symbol.symbols;
+                    func.body.body.scope.kinds = fn_symbol.kinds;
                 }
 
                 if (func.is_extern) {
@@ -230,13 +247,36 @@ pub const Resolver = struct {
                 return null;
             },
             .variable => |v| {
-                return (scope.lookup_symbol(v.name) orelse return null).kind;
+                var symbol = (scope.lookup_symbol(v.name) orelse return null);
+
+                if (v.kind == null) {
+                    const infered_kind = (try self.kind_visit(v.value.?, scope)).?;
+                    node.variable.kind = infered_kind;
+                }
+
+                var kind_name: []const u8 = "";
+                switch (node.variable.kind.?) {
+                    .resolved => |k| kind_name = k.name,
+                    .unresolved => |n| kind_name = n,
+                }
+
+                if (std.mem.eql(u8, "Fn", kind_name) or std.mem.eql(u8, "Fn", kind_name)) {
+                    symbol.kind = (try self.kind_visit(v.value.?, scope)).?;
+                }
+
+                // todo inferense
+                return null;
             },
             .constant => |c| {
                 var symbol = (scope.lookup_symbol(c.name) orelse return null);
 
+                if (c.kind == null) {
+                    const infered_kind = (try self.kind_visit(c.value, scope)).?;
+                    node.constant.kind = infered_kind;
+                }
+
                 var kind_name: []const u8 = "";
-                switch (c.kind) {
+                switch (node.constant.kind.?) {
                     .resolved => |k| kind_name = k.name,
                     .unresolved => |n| kind_name = n,
                 }
@@ -380,8 +420,15 @@ pub const Resolver = struct {
                 const kind = try self.kind_visit(u.value, scope);
                 return kind;
             },
-            .call => {
-                // todo function return type lookup system
+            .call => |c| {
+                if (c.arguments != null) {
+                    for (c.arguments.?) |arg| {
+                        _ = try self.kind_visit(arg, scope);
+                    }
+                }
+
+                // todo infere type to assignment of variable
+
                 return null;
             },
             .literal => |l| {
@@ -438,7 +485,7 @@ pub const Resolver = struct {
                 }
             },
             .variable => |v| {
-                switch (v.kind) {
+                switch (v.kind.?) {
                     .resolved => return,
                     .unresolved => |name| {
                         const kind = scope.lookup_kind(name);
@@ -456,7 +503,7 @@ pub const Resolver = struct {
                 }
             },
             .constant => |c| {
-                switch (c.kind) {
+                switch (c.kind.?) {
                     .resolved => return,
                     .unresolved => |name| {
                         const kind = scope.lookup_kind(name);

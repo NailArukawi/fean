@@ -31,6 +31,8 @@ fn lookup_fn(name: []const u8) ?fean_fn {
         return &time;
     } else if (std.mem.eql(u8, "print_i64", name)) {
         return &print_i64;
+    } else if (std.mem.eql(u8, "print_f64", name)) {
+        return &print_f64;
     }
 
     unreachable;
@@ -45,6 +47,11 @@ fn zamn(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
 fn print_i64(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
     _ = result;
     std.debug.print("[Fean]: {}\n", .{args[0].i64});
+}
+
+fn print_f64(args: []fean.vm.Item, result: ?*fean.vm.Item) void {
+    _ = result;
+    std.debug.print("[Fean]: {d:.3}\n", .{args[0].f64});
 }
 
 var time_stamp: ?i128 = null;

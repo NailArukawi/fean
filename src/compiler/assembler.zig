@@ -347,9 +347,51 @@ pub const Assembler = struct {
 
                 try self.push_op(opcode);
             },
-            .sub_u64 => unreachable,
-            .mul_u64 => unreachable,
-            .div_u64 => unreachable,
+            .sub_u64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.sub_u64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
+            .mul_u64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.mul_u64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
+            .div_u64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.div_u64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
             .add_u32 => unreachable,
             .sub_u32 => unreachable,
             .mul_u32 => unreachable,
@@ -378,9 +420,51 @@ pub const Assembler = struct {
 
                 try self.push_op(opcode);
             },
-            .sub_i64 => unreachable,
-            .mul_i64 => unreachable,
-            .div_i64 => unreachable,
+            .sub_i64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.sub_i64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
+            .mul_i64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.mul_i64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
+            .div_i64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.div_i64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
             .add_i32 => unreachable,
             .sub_i32 => unreachable,
             .mul_i32 => unreachable,
@@ -394,10 +478,66 @@ pub const Assembler = struct {
             .mul_i8 => unreachable,
             .div_i8 => unreachable,
 
-            .add_f64 => unreachable,
-            .sub_f64 => unreachable,
-            .mul_f64 => unreachable,
-            .div_f64 => unreachable,
+            .add_f64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.add_f64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
+            .sub_f64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.sub_f64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
+            .mul_f64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.mul_f64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
+            .div_f64 => |arithmetic| {
+                var opcode = Opcode.new();
+                opcode.op = Op.div_f64;
+
+                const result = arithmetic.result.register();
+                opcode.set_a(result);
+
+                const a = arithmetic.a.register();
+                opcode.set_b(a);
+
+                const b = arithmetic.b.register();
+                opcode.set_c(b);
+
+                try self.push_op(opcode);
+            },
 
             .add_f32 => unreachable,
             .sub_f32 => unreachable,
