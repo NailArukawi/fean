@@ -126,7 +126,7 @@ pub const Parser = struct {
     fn declaration_struct(self: *@This(), scope: *Node) *Node {
         _ = scope;
         const struct_name = self.pop().?;
-        self.consume_kind(.colon, "struct is missing { to start struct body");
+        self.consume_kind(.curley_left, "struct is missing { to start struct body");
         const fields = self.struct_fields();
 
         var result = self.allocator.create(Node) catch unreachable;
@@ -141,7 +141,7 @@ pub const Parser = struct {
         return result;
     }
 
-    fn struct_fields(self: *@This()) []Field {
+    fn struct_fields(self: *@This()) ?[]Field {
         var fields = Stack(Field).create(self.allocator, 2) catch unreachable;
 
         while (!self.check(.curley_right)) {
@@ -154,12 +154,13 @@ pub const Parser = struct {
             self.consume_kind(.colon, "field name is missing trailing :");
             self.check_err(.identifier, "expected a type for the struct field");
             const field_kind_name = self.pop().?;
-            fields.push(Field{ .name = field_name.data.identifier, .symbol = null, .kind = SymbolKind{ .unresolved = field_kind_name.data.identifier } }) catch unreachable;
+            fields.push(Field{ .name = field_name.data.identifier, .symbol = null, .kind = SymbolKind{ .unresolved = field_kind_name.data.identifier }, .value = null }) catch unreachable;
         }
         _ = self.pop().?;
 
         if (fields.count() == 0) {
             fields.destroy();
+            return null;
         }
 
         fields.shrink_to_fit() catch unreachable;
@@ -619,21 +620,38 @@ pub const Parser = struct {
     fn call(self: *@This(), scope: *Node) *Node {
         var result = self.primary(scope);
 
-        if (self.of_kind(.paren_left)) {
-            const args = self.arguments(scope);
-            self.consume_kind(.paren_right, "Expected call arguments to end with a )");
+        const match = [_]TokenKind{ .slash, .star };
+        _ = match;
+        while (true) {
+            if (self.of_kind(.paren_left)) {
+                const args = self.arguments(scope);
+                self.consume_kind(.paren_right, "Expected call arguments to end with a )");
 
-            const name = result;
+                const name = result;
 
-            result = self.allocator.create(Node) catch unreachable;
-            result.* = Node{
-                .call = .{
-                    // todo mem leak
-                    .name = name.literal.data.identifier,
-                    .symbol = null,
-                    .arguments = args,
-                },
-            };
+                result = self.allocator.create(Node) catch unreachable;
+                result.* = Node{
+                    .call = .{
+                        // todo mem leak
+                        .name = name.literal.data.identifier,
+                        .symbol = null,
+                        .arguments = args,
+                    },
+                };
+            } else if (self.of_kind(.dot)) {
+                self.check_err(.identifier, "missing identifier at X identifier.x");
+                const name = self.pop().?;
+                const expr = result;
+
+                result = self.allocator.create(Node) catch unreachable;
+                result.* = Node{
+                    .get = .{
+                        // todo mem leak
+                        .name = name.data.identifier,
+                        .object = expr,
+                    },
+                };
+            } else break;
         }
 
         return result;
@@ -652,6 +670,7 @@ pub const Parser = struct {
 
         if (params.count() == 0) {
             params.destroy();
+            return null;
         }
 
         params.shrink_to_fit() catch unreachable;
@@ -660,6 +679,9 @@ pub const Parser = struct {
     }
 
     fn primary(self: *@This(), scope: *Node) *Node {
+        if (self.check(.identifier) and self.check_next(.curley_left)) {
+            return self.primary_construct(scope);
+        }
         if (self.check(.True) or self.check(.False)) {
             var result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .literal = self.pop().? };
@@ -696,6 +718,57 @@ pub const Parser = struct {
 
         std.debug.print("[{}:{}]Unexpected token: {}\n", .{ self.peek().?.span.line, self.peek().?.span.pos, self.peek().? });
         unreachable;
+    }
+
+    fn primary_construct(self: *@This(), scope: *Node) *Node {
+        const kind_name = self.pop().?.data.identifier;
+        _ = self.pop(); // pop the {
+        const fields = self.primary_construct_fields(scope);
+
+        var result = self.allocator.create(Node) catch unreachable;
+        result.* = Node{ .construct = .{
+            .symbol = null,
+            .kind = SymbolKind{ .unresolved = kind_name },
+            .fields = fields,
+        } };
+        return result;
+    }
+
+    fn primary_construct_fields(self: *@This(), scope: *Node) ?[]Field {
+        var fields = Stack(Field).create(self.allocator, 2) catch unreachable;
+
+        while (!self.check(.curley_right)) {
+            if (self.check(.dot)) {
+                _ = self.pop().?;
+            }
+
+            if (self.check(.curley_right)) break;
+
+            self.check_err(.identifier, "expected a name for the struct field");
+            const field_name = self.pop().?;
+            self.consume_kind(.equal, "field name is missing trailing =");
+            const field_value = self.expression(scope);
+            fields.push(Field{
+                .name = field_name.data.identifier,
+                .symbol = null,
+                .kind = null,
+                .value = field_value,
+            }) catch unreachable;
+
+            if (self.check(.comma)) {
+                _ = self.pop().?;
+            }
+        }
+        _ = self.pop().?;
+
+        if (fields.count() == 0) {
+            fields.destroy();
+            return null;
+        }
+
+        fields.shrink_to_fit() catch unreachable;
+
+        return fields.as_slice();
     }
 
     fn consume_kinds(self: *@This(), kinds: []const TokenKind, comptime err: []const u8) void {

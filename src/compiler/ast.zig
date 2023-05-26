@@ -24,7 +24,8 @@ pub const Parameter = struct {
 pub const Field = struct {
     name: []const u8,
     symbol: ?Symbol,
-    kind: SymbolKind,
+    kind: ?SymbolKind,
+    value: ?*Node,
 };
 
 pub const FunctionBody = union {
@@ -136,7 +137,12 @@ pub const Node = union(enum) {
         name: []const u8,
         symbol: ?Symbol,
         this: ?Kind,
-        fields: []Field,
+        fields: ?[]Field,
+    },
+    construct: struct {
+        symbol: ?Symbol,
+        kind: ?SymbolKind,
+        fields: ?[]Field,
     },
     variable: struct {
         name: []const u8,
@@ -189,6 +195,15 @@ pub const Node = union(enum) {
         symbol: ?Symbol,
         arguments: ?[]*Node,
     },
+    get: struct {
+        name: []const u8,
+        object: *Node,
+    },
+    //set: struct {
+    //    name: []const u8,
+    //    object: *Node,
+    //},
+    object: *Node,
     literal: Token,
 };
 

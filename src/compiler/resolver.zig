@@ -16,6 +16,7 @@ const AST = @import("parser.zig").AST;
 const Parameter = @import("parser.zig").Parameter;
 const Node = @import("parser.zig").Node;
 
+const Stack = @import("../stack.zig").Stack;
 const Allocator = std.mem.Allocator;
 
 const Scope = struct {
@@ -80,17 +81,25 @@ const Scope = struct {
     }
 };
 
+const TodoStruct = struct {
+    scope: *Scope,
+    todo: *Node,
+    is_complete: bool = false,
+};
+
 pub const TYPE_GEN_BUFFER = 256;
 
 pub const Resolver = struct {
     ast: *AST,
     allocator: Allocator,
     buffer: [TYPE_GEN_BUFFER]u8 = [_]u8{0} ** TYPE_GEN_BUFFER,
+    structs_todo: Stack(TodoStruct),
 
     pub fn resolve(ast: *AST, allocator: Allocator) !void {
         var resolver = @This(){
             .ast = ast,
             .allocator = allocator,
+            .structs_todo = try Stack(TodoStruct).create(allocator, 16),
         };
 
         var head = Scope{
@@ -108,6 +117,7 @@ pub const Resolver = struct {
         try self.expand_visit(node, scope);
         _ = try self.kind_visit(node, scope);
         try self.symbol_visit(node, scope);
+        try self.struct_resolve();
     }
 
     fn expand_visit(self: *@This(), node: *Node, scope: *Scope) !void {
@@ -129,6 +139,9 @@ pub const Resolver = struct {
             },
             .structure => |s| {
                 _ = s;
+            },
+            .construct => |c| {
+                _ = c;
             },
             .variable => |v| {
                 if (v.value != null) try self.expand_visit(v.value.?, scope);
@@ -223,6 +236,13 @@ pub const Resolver = struct {
                 // todo
                 return;
             },
+            .get => {
+                // todo
+                return;
+            },
+            .object => {
+                return;
+            },
             .literal => {
                 return;
             },
@@ -250,8 +270,26 @@ pub const Resolver = struct {
                 return null;
             },
             .structure => |s| {
-                _ = s;
+                var structure = node.structure;
+                for (s.fields.?, 0..) |field, i| {
+                    if (field.kind.? == .unresolved) {
+                        const kind_result = scope.lookup_kind(field.kind.?.unresolved);
+                        if (kind_result != null) {
+                            structure.fields.?[i].kind = SymbolKind{ .resolved = kind_result.? };
+                        }
+                    }
+                }
+
+                const this = try scope.install_kind(s.name, null, 42069, self.allocator);
+                structure.this = this;
+
+                try self.structs_todo.push(TodoStruct{ .todo = node, .scope = scope });
+
                 return null;
+            },
+            .construct => |c| {
+                _ = c;
+                unreachable;
             },
             .variable => |v| {
                 var symbol = (scope.lookup_symbol(v.name) orelse return null);
@@ -434,9 +472,20 @@ pub const Resolver = struct {
                     }
                 }
 
-                // todo infere type to assignment of variable
+                if (c.symbol != null) {
+                    // TODO make sure this is correct
+                    return SymbolKind{ .resolved = c.symbol.?.kind.?.resolved.fields.?.kind };
+                }
 
                 return null;
+            },
+            .get => |g| {
+                _ = g;
+                unreachable;
+            },
+            .object => |o| {
+                _ = o;
+                unreachable;
             },
             .literal => |l| {
                 switch (l.data) {
@@ -493,6 +542,9 @@ pub const Resolver = struct {
             },
             .structure => |s| {
                 _ = s;
+            },
+            .construct => |c| {
+                _ = c;
             },
             .variable => |v| {
                 switch (v.kind.?) {
@@ -565,12 +617,119 @@ pub const Resolver = struct {
                 // todo
                 return;
             },
+            .get => {
+                // todo
+                return;
+            },
+            .object => {
+                return;
+            },
             .literal => {
                 return;
             },
         }
     }
+
+    // a workaround for possible mixed struct dependencies.
+    // todo could maybe be solved better
+    fn struct_resolve(self: *@This()) !void {
+        if (self.structs_todo.count() == 0) return;
+        var all_done: bool = true;
+        var work_done: bool = false;
+        while (!all_done and work_done) {
+            all_done = true;
+            work_done = false;
+            for (self.structs_todo.as_slice()) |*todo| {
+                if (todo.is_complete) continue;
+                all_done = false;
+
+                if (process_struct(todo)) work_done = true;
+            }
+        }
+
+        for (self.structs_todo.as_slice()) |*todo| {
+            todo.is_complete = false;
+        }
+
+        all_done = true;
+        work_done = true;
+        while (!all_done and work_done) {
+            all_done = false;
+            work_done = false;
+            for (self.structs_todo.as_slice()) |*todo| {
+                if (todo.is_complete) continue;
+                all_done = false;
+
+                if (try process_struct_fields(self.allocator, todo)) work_done = true;
+            }
+        }
+    }
 };
+
+fn process_struct(todo: *TodoStruct) bool {
+    var work_done: bool = false;
+    var structure = &todo.todo.structure;
+    for (structure.fields.?, 0..) |field, i| {
+        if (field.kind.? == .resolved) continue;
+        const unresolved = field.kind.?.unresolved;
+        const kind = todo.scope.lookup_kind(unresolved);
+        if (kind == null) continue;
+        work_done = true;
+        structure.fields.?[i].kind = SymbolKind{ .resolved = kind.? };
+    }
+
+    return work_done;
+}
+
+fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
+    var structure = &todo.todo.structure;
+
+    var largest: usize = 0;
+    for (structure.fields.?) |field| {
+        if (field.kind.?.resolved.size == std.math.maxInt(usize)) return false;
+        if (field.kind.?.resolved.size > largest) largest = field.kind.?.resolved.size;
+    }
+
+    var alignment: u2 = 0;
+    if (largest == 2) alignment = 1;
+    if (largest == 3 or largest == 4) alignment = 2;
+    if (largest > 4) alignment = 3;
+
+    var actual_alignment: u8 = 1;
+    if (largest == 2) actual_alignment = 2;
+    if (largest == 3 or largest == 4) actual_alignment = 4;
+    if (largest > 4) actual_alignment = 8;
+
+    var size: usize = 0;
+    for (structure.fields.?, 0..) |field, i| {
+        if (i == 0) {
+            size += field.kind.?.resolved.size;
+        } else if (actual_alignment == 1) {
+            size += field.kind.?.resolved.size;
+            var result = try field.kind.?.resolved.install_field(field.name, field.kind.?.resolved, allocator);
+            result.*.padding = 0;
+            result.*.alignment = 1;
+        } else {
+            const closest = closest_aligned(size, actual_alignment);
+            const padding = closest - size;
+            var result = try field.kind.?.resolved.install_field(field.name, field.kind.?.resolved, allocator);
+            result.*.padding = @intCast(u2, padding << 1);
+            result.*.alignment = alignment;
+        }
+    }
+
+    todo.is_complete = true;
+
+    return true;
+}
+
+fn closest_aligned(starting: usize, alignment: u8) usize {
+    var closest: usize = 0;
+    while (closest < starting) {
+        closest += alignment;
+    }
+    return closest;
+}
 
 fn install_fn_kind(self: *Resolver, scope: *Scope, name: []const u8, params: []Parameter, result: Kind, is_extern: bool) !Kind {
     const allocator = self.allocator;

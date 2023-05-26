@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Symbol = @import("symboltable.zig").Symbol;
+const SymbolKind = @import("symboltable.zig").SymbolKind;
 const SymbolTable = @import("symboltable.zig").SymbolTable;
 const Kind = @import("kindtable.zig").Kind;
 const KindTable = @import("kindtable.zig").KindTable;
@@ -534,6 +535,14 @@ pub const IRBlock = struct {
         return self.symbols.?.lookup(identifier) orelse self.parent.lookup_symbol(identifier);
     }
 
+    pub fn install_symbol(self: *@This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !Symbol {
+        if (self.symbols == null) {
+            self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
+            return self.symbols.?;
+        }
+        return self.symbols.?.install(allocator, name, kind, size);
+    }
+
     pub fn get_temp(self: *@This()) ?Address {
         const used_registers = self.registers + self.temporaries;
         if ((used_registers + 1) > 1023) {
@@ -627,6 +636,14 @@ pub const IR = struct {
             return null;
         }
         return self.symbols.?.lookup(identifier);
+    }
+
+    pub fn install_symbol(self: *@This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !Symbol {
+        if (self.symbols == null) {
+            self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
+            return self.symbols.?;
+        }
+        return self.symbols.?.install(allocator, name, kind, size);
     }
 
     pub fn get_temp(self: *@This()) ?Address {
@@ -739,6 +756,7 @@ pub const IR = struct {
 
                 // obhects that are not builtin
                 .Object => unreachable,
+                else => unreachable,
             }
         }
 
@@ -833,6 +851,13 @@ pub const Scope = union(enum) {
         switch (self) {
             .head => |head| return head.lookup_symbol(identifier),
             .block => |block| return block.lookup_symbol(identifier),
+        }
+    }
+
+    pub fn install_symbol(self: @This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !Symbol {
+        switch (self) {
+            .head => |head| return head.install_symbol(allocator, name, kind, size),
+            .block => |block| return block.install_symbol(allocator, name, kind, size),
         }
     }
 
@@ -1038,8 +1063,15 @@ pub const Compiler = struct {
                     try scope.push_instr(Instr{ .block = block.block });
                 }
             },
-            .structure => |s| {
-                _ = s;
+            .structure => |*s| {
+                if (scope.lookup_symbol(s.name) == null) {
+                    const kind = SymbolKind{ .resolved = s.this.? };
+                    _ = try scope.install_symbol(self.allocator, s.name, kind, s.this.?.size);
+                }
+                return null;
+            },
+            .construct => |*c| {
+                _ = c;
                 unreachable;
             },
             .variable => {
@@ -1321,6 +1353,12 @@ pub const Compiler = struct {
                 defer if (result == null) scope.drop_temp();
 
                 try self.generate_call(node, scope, address, extra);
+            },
+            .get => {
+                unreachable;
+            },
+            .object => {
+                unreachable;
             },
             .literal => {
                 // todo handle no registers!
@@ -2086,12 +2124,16 @@ pub const Compiler = struct {
                     .ExternFn => {
                         same = false;
                     },
+                    .Kind => {
+                        same = false;
+                    },
                     .InternalFn => {
                         same = false;
                     },
 
                     // objects that are not builtin
                     .Object => unreachable,
+                    else => unreachable,
                 }
 
                 // we have a dupe!
@@ -2144,6 +2186,8 @@ const LitKind = enum {
     Text,
     ExternFn,
     InternalFn,
+    MethodSet,
+    Kind,
 
     // objects that are not builtin
     Object,

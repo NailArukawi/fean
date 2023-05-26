@@ -1,4 +1,10 @@
+print : ExternFn : extern fn(int_to_print: i64) -> void;
+
 struct Point {
-    x: f64,
-    y: f64
+    x: i64,
+    y: i64
 }
+
+zamn : Point = Point { .x = 1, .y = 2 };
+print(zamn.x);
+print(zamn.y);

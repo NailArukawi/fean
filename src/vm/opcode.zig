@@ -1,6 +1,6 @@
 const std = @import("std");
 
-// 101|256 used
+// 103|256 used
 pub const Op = enum(u8) {
     // Misc (9)
     no_op = 0,
@@ -12,7 +12,7 @@ pub const Op = enum(u8) {
     dive,
     ascend,
 
-    // Memory (10)
+    // Memory (12)
     load_true,
     load_false,
     load_literal,
@@ -22,6 +22,9 @@ pub const Op = enum(u8) {
     store_global,
     get_upvalue,
     set_upvalue,
+    create_struct,
+    get_struct_field,
+    set_struct_field,
     copy,
 
     // Arithmetic (60)

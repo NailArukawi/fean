@@ -2,6 +2,7 @@ const Dict = @import("dict.zig").Dict;
 const Text = @import("text.zig").Text;
 const Function = @import("function.zig").Function;
 const Object = @import("object.zig").Object;
+const Kind = @import("../../compiler/mod.zig").Kind;
 const Ref = @import("../mod.zig").Ref;
 
 pub const Item = extern union {
@@ -19,9 +20,9 @@ pub const Item = extern union {
     // todo make nil a null type
     nil: u8,
     object: *Ref,
+    kind: Kind,
 
     // raw data,
-    // comes from non heap allocated complier constructs.
     any: ?*anyopaque,
 
     pub inline fn resolve_object(self: @This()) *Object {

@@ -3,6 +3,7 @@ const std = @import("std");
 
 const vm = @import("../vm/mod.zig");
 const Allocator = std.mem.Allocator;
+const Methods = @import("../vm/value/function.zig");
 
 pub const KindMeta = struct {
     is_fn: bool,
@@ -16,9 +17,9 @@ pub const Kind = *KindTable;
 pub const Field = *FieldList;
 pub const KindTable = struct {
     name: []const u8,
-    // does a type need more than ~4GiB?
-    size: usize,
+    size: usize = std.math.maxInt(usize),
     fields: ?*FieldList,
+    methods: ?Methods,
     meta: KindMeta,
     next: ?*@This(),
 
@@ -62,8 +63,9 @@ pub const KindTable = struct {
     }
 
     inline fn default(self: *@This()) void {
-        self.size = 0;
+        self.size = std.math.maxInt(usize);
         self.fields = null;
+        self.methods = null;
         self.meta = KindMeta{
             .is_fn = false,
             .is_extern_fn = false,
@@ -95,12 +97,13 @@ pub const KindTable = struct {
         return installed;
     }
 
-    pub fn install_field(self: *@This(), name: []const u8, kind: Kind, allocator: Allocator) !void {
+    pub fn install_field(self: *@This(), name: []const u8, kind: Kind, allocator: Allocator) !Field {
         if (self.fields == null) {
             self.fields = try FieldList.create(name, kind, allocator);
         } else {
-            try self.fields.?.install(name, kind, allocator);
+            return self.fields.?.install(name, kind, allocator);
         }
+        return self.fields.?;
     }
 
     pub fn lookup(self: *@This(), name: []const u8) ?*@This() {
@@ -128,18 +131,23 @@ pub const KindTable = struct {
 pub const FieldList = struct {
     name: []const u8,
     kind: Kind,
+    // (leftshift) or (1 if 0)
+    alignment: u2 = 0,
+    padding: u2 = 0,
     next: ?*@This(),
 
     pub fn create(name: []const u8, kind: Kind, allocator: Allocator) !*FieldList {
         var installee = try allocator.create(@This());
         installee.name = name;
         installee.kind = kind;
+        installee.alignment = 0;
+        installee.padding = 0;
         installee.next = null;
 
         return installee;
     }
 
-    pub fn install(self: *@This(), name: []const u8, kind: Kind, allocator: Allocator) !void {
+    pub fn install(self: *@This(), name: []const u8, kind: Kind, allocator: Allocator) !*@This() {
         var cursor = self;
         while (cursor.next != null) {
             cursor = cursor.next.?;
@@ -151,6 +159,7 @@ pub const FieldList = struct {
         installee.next = null;
 
         cursor.next = installee;
+        return installee;
     }
 
     pub fn lookup(self: *@This(), name: []const u8) ?*@This() {

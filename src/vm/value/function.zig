@@ -30,7 +30,7 @@ pub const ExternFunction = extern struct {
 };
 
 pub const Method = struct {
-    is_intern: bool,
+    is_extern: bool,
     method: MethodBody,
 };
 
