@@ -1,6 +1,8 @@
 const std = @import("std");
 const fean = @import("mod.zig");
 
+const Point = struct { x: i64, y: i64, z: i64 };
+
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -19,7 +21,11 @@ pub fn main() !void {
     defer allocator.free(file_buffer);
 
     var vm = try fean.Fean.create(file_buffer, config);
-    _ = vm;
+    const g = vm.result().resolve_object().body.resolve(*Point);
+    std.debug.print("x: {}\n", .{g.x});
+    std.debug.print("y: {}\n", .{g.y});
+    std.debug.print("z: {}\n", .{g.z});
+    vm.thread.heap.debug();
 }
 
 const fean_fn = *const fn (args: []fean.vm.Item, result: ?*fean.vm.Item) void;
@@ -35,6 +41,7 @@ fn lookup_fn(name: []const u8) ?fean_fn {
         return &print_f64;
     }
 
+    std.debug.print("tried to find fn: {s}\n", .{name});
     unreachable;
 }
 

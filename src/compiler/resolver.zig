@@ -68,7 +68,7 @@ const Scope = struct {
         return self.symbols.?.install(allocator, name, kind, size);
     }
 
-    pub fn install_kind(self: *@This(), name: []const u8, fields: ?*FieldList, size: usize, allocator: Allocator) !Kind {
+    pub fn install_kind(self: *@This(), name: []const u8, fields: ?*FieldList, size: ?usize, allocator: Allocator) !Kind {
         return self.kinds.?.install(name, fields, size, allocator);
     }
 
@@ -240,6 +240,10 @@ pub const Resolver = struct {
                 // todo
                 return;
             },
+            .set => {
+                // todo
+                return;
+            },
             .object => {
                 return;
             },
@@ -269,27 +273,39 @@ pub const Resolver = struct {
                 // todo maybe allow a scope to be a kind
                 return null;
             },
-            .structure => |s| {
-                var structure = node.structure;
+            .structure => |*s| {
                 for (s.fields.?, 0..) |field, i| {
                     if (field.kind.? == .unresolved) {
                         const kind_result = scope.lookup_kind(field.kind.?.unresolved);
                         if (kind_result != null) {
-                            structure.fields.?[i].kind = SymbolKind{ .resolved = kind_result.? };
+                            s.fields.?[i].kind = SymbolKind{ .resolved = kind_result.? };
                         }
                     }
                 }
 
-                const this = try scope.install_kind(s.name, null, 42069, self.allocator);
-                structure.this = this;
+                const this = try scope.install_kind(s.name, null, null, self.allocator);
+                s.this = this;
 
                 try self.structs_todo.push(TodoStruct{ .todo = node, .scope = scope });
 
                 return null;
             },
-            .construct => |c| {
-                _ = c;
-                unreachable;
+            .construct => |*c| {
+                if (c.kind.? == .unresolved) {
+                    const kind_lookup = scope.lookup_kind(c.kind.?.unresolved);
+                    if (kind_lookup != null) {
+                        c.kind = .{ .resolved = kind_lookup.? };
+                    }
+                }
+
+                if (c.fields != null) {
+                    for (c.fields.?) |*field| {
+                        const field_kind = try self.kind_visit(field.value.?, scope);
+                        field.kind = field_kind;
+                    }
+                }
+
+                return c.kind.?;
             },
             .variable => |v| {
                 var symbol = (scope.lookup_symbol(v.name) orelse return null);
@@ -307,6 +323,10 @@ pub const Resolver = struct {
 
                 if (std.mem.eql(u8, "Fn", kind_name) or std.mem.eql(u8, "Fn", kind_name)) {
                     symbol.kind = (try self.kind_visit(v.value.?, scope)).?;
+                }
+
+                if (v.value != null) {
+                    _ = try self.kind_visit(v.value.?, scope);
                 }
 
                 // todo inferense
@@ -483,6 +503,10 @@ pub const Resolver = struct {
                 _ = g;
                 unreachable;
             },
+            .set => |s| {
+                _ = s;
+                unreachable;
+            },
             .object => |o| {
                 _ = o;
                 unreachable;
@@ -621,6 +645,10 @@ pub const Resolver = struct {
                 // todo
                 return;
             },
+            .set => {
+                // todo
+                return;
+            },
             .object => {
                 return;
             },
@@ -634,8 +662,8 @@ pub const Resolver = struct {
     // todo could maybe be solved better
     fn struct_resolve(self: *@This()) !void {
         if (self.structs_todo.count() == 0) return;
-        var all_done: bool = true;
-        var work_done: bool = false;
+        var all_done: bool = false;
+        var work_done: bool = true;
         while (!all_done and work_done) {
             all_done = true;
             work_done = false;
@@ -651,16 +679,33 @@ pub const Resolver = struct {
             todo.is_complete = false;
         }
 
-        all_done = true;
+        all_done = false;
         work_done = true;
         while (!all_done and work_done) {
-            all_done = false;
+            all_done = true;
             work_done = false;
             for (self.structs_todo.as_slice()) |*todo| {
                 if (todo.is_complete) continue;
                 all_done = false;
 
                 if (try process_struct_fields(self.allocator, todo)) work_done = true;
+            }
+        }
+
+        for (self.structs_todo.as_slice()) |*todo| {
+            todo.is_complete = false;
+        }
+
+        all_done = false;
+        work_done = true;
+        while (!all_done and work_done) {
+            all_done = true;
+            work_done = false;
+            for (self.structs_todo.as_slice()) |*todo| {
+                if (todo.is_complete) continue;
+                all_done = false;
+
+                if (process_struct_size(todo)) work_done = true;
             }
         }
     }
@@ -719,6 +764,30 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
     }
 
     todo.is_complete = true;
+
+    return true;
+}
+
+fn process_struct_size(todo: *TodoStruct) bool {
+    var fields_sized: bool = true;
+    const fields = todo.todo.structure.fields.?;
+    for (fields) |field| {
+        if (!field.kind.?.resolved.is_size_set()) fields_sized = false;
+    }
+
+    if (!fields_sized) return false;
+
+    var size: usize = 0;
+
+    for (fields) |field| {
+        const kind = field.kind.?.resolved;
+        size += kind.size;
+    }
+
+    todo.todo.structure.this.?.size = size;
+    todo.is_complete = true;
+
+    // TODO IMPORTANT alignment!
 
     return true;
 }

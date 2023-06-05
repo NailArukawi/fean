@@ -466,7 +466,7 @@ pub const Parser = struct {
     }
 
     fn expression(self: *@This(), scope: *Node) *Node {
-        // variable (X: num)
+        // variable (identifier: num)
         if (self.check(.identifier) // X
         and self.check_next(.equal) // =
         ) {
@@ -620,8 +620,6 @@ pub const Parser = struct {
     fn call(self: *@This(), scope: *Node) *Node {
         var result = self.primary(scope);
 
-        const match = [_]TokenKind{ .slash, .star };
-        _ = match;
         while (true) {
             if (self.of_kind(.paren_left)) {
                 const args = self.arguments(scope);
@@ -727,7 +725,6 @@ pub const Parser = struct {
 
         var result = self.allocator.create(Node) catch unreachable;
         result.* = Node{ .construct = .{
-            .symbol = null,
             .kind = SymbolKind{ .unresolved = kind_name },
             .fields = fields,
         } };

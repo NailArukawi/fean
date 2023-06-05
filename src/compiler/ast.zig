@@ -140,7 +140,6 @@ pub const Node = union(enum) {
         fields: ?[]Field,
     },
     construct: struct {
-        symbol: ?Symbol,
         kind: ?SymbolKind,
         fields: ?[]Field,
     },
@@ -199,10 +198,10 @@ pub const Node = union(enum) {
         name: []const u8,
         object: *Node,
     },
-    //set: struct {
-    //    name: []const u8,
-    //    object: *Node,
-    //},
+    set: struct {
+        name: []const u8,
+        object: *Node,
+    },
     object: *Node,
     literal: Token,
 };

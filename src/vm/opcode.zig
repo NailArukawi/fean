@@ -1,6 +1,6 @@
 const std = @import("std");
 
-// 103|256 used
+// 124|256 used
 pub const Op = enum(u8) {
     // Misc (9)
     no_op = 0,
@@ -12,7 +12,7 @@ pub const Op = enum(u8) {
     dive,
     ascend,
 
-    // Memory (12)
+    // Memory (33)
     load_true,
     load_false,
     load_literal,
@@ -22,10 +22,30 @@ pub const Op = enum(u8) {
     store_global,
     get_upvalue,
     set_upvalue,
-    create_struct,
-    get_struct_field,
-    set_struct_field,
     copy,
+    create_struct,
+    get_struct_field_u64,
+    get_struct_field_u32,
+    get_struct_field_u16,
+    get_struct_field_u8,
+    get_struct_field_i64,
+    get_struct_field_i32,
+    get_struct_field_i16,
+    get_struct_field_i8,
+    get_struct_field_f64,
+    get_struct_field_f32,
+    get_struct_field_obj,
+    set_struct_field_u64,
+    set_struct_field_u32,
+    set_struct_field_u16,
+    set_struct_field_u8,
+    set_struct_field_i64,
+    set_struct_field_i32,
+    set_struct_field_i16,
+    set_struct_field_i8,
+    set_struct_field_f64,
+    set_struct_field_f32,
+    set_struct_field_obj,
 
     // Arithmetic (60)
     add_u64,
@@ -151,12 +171,16 @@ pub const Opcode = extern struct {
         return @truncate(u2, self.args >> 30);
     }
 
+    pub inline fn x(self: @This()) u32 {
+        return self.args;
+    }
+
     pub inline fn y(self: @This()) u22 {
         return @truncate(u22, self.args >> 10);
     }
 
-    pub inline fn x(self: @This()) u32 {
-        return self.args;
+    pub inline fn z(self: @This()) u12 {
+        return @truncate(u12, self.args >> 20);
     }
 
     pub inline fn set_a(self: *@This(), val: u10) void {
@@ -175,12 +199,16 @@ pub const Opcode = extern struct {
         self.args = (self.args & 0x3FFFFFFF) | (@intCast(u32, val) << 30);
     }
 
+    pub inline fn set_x(self: *@This(), val: u32) void {
+        self.args = val;
+    }
+
     pub inline fn set_y(self: *@This(), val: u22) void {
         self.args = (self.args & 0x3FF) | (@intCast(u32, val) << 10);
     }
 
-    pub inline fn set_x(self: *@This(), val: u32) void {
-        self.args = val;
+    pub inline fn set_z(self: *@This(), val: u12) void {
+        self.args = (self.args & 0xFFFFF) | (@intCast(u32, val) << 20);
     }
 
     pub inline fn new() @This() {

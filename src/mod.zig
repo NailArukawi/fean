@@ -22,7 +22,7 @@ pub const Fean = struct {
         //debugging
         var buffer: [512]u8 = [_]u8{0} ** 512;
         try ir.debug(&buffer, compiler_meta);
-        //main.chunk.debug();
+        //main.chunk.debug(false);
 
         var fean = @This(){
             .config = config,

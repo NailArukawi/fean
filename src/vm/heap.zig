@@ -6,9 +6,9 @@ const Linked = std.SinglyLinkedList;
 
 const Object = @import("./value/object.zig").Object;
 
-pub const BLOCK_DEFAULT_SIZE: usize = std.math.powi(usize, 2, 16) catch unreachable;
+pub const BLOCK_DEFAULT_SIZE: usize = std.math.powi(usize, 2, 15) catch unreachable;
 
-pub const LINE_SIZE: usize = std.math.powi(usize, 2, 7) catch unreachable;
+pub const LINE_SIZE: usize = std.math.powi(usize, 2, 6) catch unreachable;
 pub const LINE_COUNT: usize = BLOCK_DEFAULT_SIZE / LINE_SIZE;
 
 // Size ranges for different allocation logic.
@@ -27,6 +27,9 @@ pub const LARGE = SizeRange{ .start = (BLOCK_DEFAULT_SIZE / 4) + 1, .end = ((std
 pub const Ref = struct {
     // ptr adress value
     ptr: usize,
+
+    // How many heap lines precedes the object
+    offset: u16,
 
     // How many heap lines the object spans
     heap_size: u16,
@@ -265,6 +268,7 @@ pub const BumpBlock = struct {
             const start = @ptrToInt(self.block.ptr);
             const result = try context.create_fean_ptr(start + offset);
             result.heap_size = lines_spanned;
+            result.offset = @intCast(u16, offset);
 
             var node = try context.underlying_allocator.create(Linked(*Ref).Node);
             node.data = result;
@@ -287,6 +291,7 @@ pub const Heap = struct {
     pointers: Linked(*Ref),
     underlying_allocator: Allocator,
     mark: bool,
+    collecting: bool,
 
     head: *BumpBlock,
     overflow: *BumpBlock,
@@ -381,6 +386,31 @@ pub const Heap = struct {
         self.large.prepend(node);
 
         return result;
+    }
+
+    pub fn gc(self: *@This()) void {
+        std.debug.assert(!self.collecting); // can only collect once at a time
+        self.collecting = true;
+        var thread = try std.Thread.spawn(.{}, @This().__gc, .{self});
+        _ = thread;
+    }
+
+    fn __gc(self: *@This()) void {
+        for (self.rest) |*bb| {
+            for (bb.meta.allocations) |node| {
+                const ref = node.data;
+                const reachable = ref.get_mark() == self.mark;
+                if (!reachable) {
+                    for (ref.offset..(ref.offset + ref.heap_size)) |i| {
+                        bb.meta.used[i] = false;
+                    }
+
+                    bb.meta.allocations.remove(node);
+                    self.pointers.remove(node);
+                }
+            }
+            bb.find_next_available_hole(0);
+        }
     }
 
     pub fn debug(self: *@This()) void {

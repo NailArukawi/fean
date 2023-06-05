@@ -51,8 +51,8 @@ pub const CallStack = struct {
 
 pub const Thread = struct {
     stack: [STACK_SIZE]Item = [_]Item{Item.default()} ** STACK_SIZE,
-    stack_base: usize,
-    obj_map: DynamicBitSet,
+    obj_map: [STACK_SIZE]bool = [_]bool{false} ** STACK_SIZE,
+    stack_base: usize = 0,
     heap: *Heap,
 
     literals: *Stack(Item),
@@ -61,7 +61,9 @@ pub const Thread = struct {
     methods: Linked(Methods),
 
     stack_view: [*]Item,
+    stack_view_obj: [*]bool,
     register: [*]Item,
+    register_obj: [*]bool,
     depth: usize,
 
     call_stack: CallStack,
@@ -75,6 +77,7 @@ pub const Thread = struct {
         const result = try allocator.create(@This());
 
         result.stack = [_]Item{Item.default()} ** STACK_SIZE;
+        result.obj_map = [_]bool{false} ** STACK_SIZE;
         result.stack_base = 0;
         result.heap = try Heap.create(allocator);
 
@@ -82,9 +85,10 @@ pub const Thread = struct {
         result.globals = try Global.default(result.heap);
 
         result.stack_view = result.stack[0..STACK_SIZE];
+        result.stack_view_obj = result.obj_map[0..STACK_SIZE];
         result.register = result.stack[0..REGISTER_COUNT];
+        result.register_obj = result.obj_map[0..REGISTER_COUNT];
         result.depth = 0;
-        result.obj_map = try DynamicBitSet.create(allocator, STACK_SIZE);
 
         result.call_stack = try CallStack.create(allocator, CALL_STACK_SIZE);
         result.ip = 0;
@@ -133,8 +137,9 @@ pub const Thread = struct {
     pub inline fn recalc_reg(self: *@This()) !void {
         // out of stack
         std.debug.assert(STACK_SIZE > (self.depth + self.stack_base));
-        const depth_offset = self.depth * 1024;
-        self.register = self.stack_view[depth_offset..(depth_offset + 1024)].ptr;
+        const depth_offset = self.depth * REGISTER_COUNT;
+        self.register = self.stack_view[depth_offset..(depth_offset + REGISTER_COUNT)].ptr;
+        self.register_obj = self.stack_view_obj[depth_offset..(depth_offset + REGISTER_COUNT)].ptr;
     }
 
     pub inline fn recalc_stack(self: *@This()) !void {
@@ -143,7 +148,9 @@ pub const Thread = struct {
         const depth_offset = self.depth * 1024;
         const stack_base_offset = self.stack_base * 1024;
         self.stack_view = self.stack[stack_base_offset..(STACK_SIZE)].ptr;
-        self.register = self.stack_view[depth_offset..(depth_offset + 1024)].ptr;
+        self.stack_view_obj = self.obj_map[stack_base_offset..(STACK_SIZE)].ptr;
+        self.register = self.stack_view[depth_offset..(depth_offset + REGISTER_COUNT)].ptr;
+        self.register_obj = self.stack_view_obj[depth_offset..(depth_offset + REGISTER_COUNT)].ptr;
     }
 
     pub fn call_fn(self: *@This(), body: *Chunk, result: u10) !void {
@@ -316,13 +323,28 @@ pub const Thread = struct {
                     const a = opcode.a();
                     const y = opcode.y();
                     //std.debug.print("set up: {}\n", .{self.register[a].i64});
-                    self.stack_view[y] = self.register[a];
+                    self.register[y] = self.register[a];
+                },
+                // todo copy obj bit
+                .create_struct => {
+                    const a = opcode.a();
+                    const kind = self.load_literal(opcode.y()).kind;
+                    // todo get methods ptr
+                    self.register[a] = .{ .object = (self.heap.alloc_object(kind.size) catch unreachable).obj };
+                    self.register_obj[a] = true;
                 },
                 // todo copy obj bit
                 .copy => {
                     const result = opcode.a();
                     const value = opcode.b();
                     self.register[result] = self.register[value];
+                },
+                .set_struct_field_i64 => {
+                    const value = self.register[opcode.a()].i64;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(i64)[index] = value;
                 },
 
                 // Arithmetic

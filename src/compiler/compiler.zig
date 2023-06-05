@@ -30,9 +30,14 @@ pub const AddressKind = enum(u8) {
     global,
     temporary,
     pair,
+    field,
 
-    // extra enums
+    extra,
+};
+
+pub const Extra = enum(u56) {
     detach,
+    copy_if_move,
 };
 
 pub const Address = struct {
@@ -79,10 +84,15 @@ pub const Address = struct {
             .inner = @intCast(usize, id) | (@intCast(usize, @enumToInt(AddressKind.pair)) << 56),
         };
     }
-
-    pub inline fn new_detach() @This() {
+    pub inline fn new_field(address: u56) @This() {
         return @This(){
-            .inner = @intCast(usize, 0) | (@intCast(usize, @enumToInt(AddressKind.detach)) << 56),
+            .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.field)) << 56),
+        };
+    }
+
+    pub inline fn new_extra(e: Extra) @This() {
+        return @This(){
+            .inner = @enumToInt(e) | (@intCast(usize, @enumToInt(AddressKind.extra)) << 56),
         };
     }
 
@@ -119,6 +129,14 @@ pub const Address = struct {
 
     pub inline fn kind(self: @This()) AddressKind {
         return @intToEnum(AddressKind, @truncate(u8, self.inner >> 56));
+    }
+
+    pub inline fn field(self: @This()) u56 {
+        return @truncate(u56, self.inner);
+    }
+
+    pub inline fn extra(self: @This()) Extra {
+        return @intToEnum(Extra, @truncate(u56, self.inner));
     }
 
     pub inline fn raw(self: @This()) usize {
@@ -164,6 +182,12 @@ pub const Arithmetic = struct {
     b: Address,
 };
 
+pub const StructAccess = struct {
+    reg: Address,
+    this: Address,
+    index: Address,
+};
+
 pub const Instr = union(enum) {
     // Misc
     no_op,
@@ -196,7 +220,33 @@ pub const Instr = union(enum) {
     store_global: Load,
     get_upvalue: Load,
     set_upvalue: Load,
+    create_struct: struct {
+        result: Address,
+        kind: Address,
+    },
     copy: Load,
+    get_struct_field_u64: StructAccess,
+    get_struct_field_u32: StructAccess,
+    get_struct_field_u16: StructAccess,
+    get_struct_field_u8: StructAccess,
+    get_struct_field_i64: StructAccess,
+    get_struct_field_i32: StructAccess,
+    get_struct_field_i16: StructAccess,
+    get_struct_field_i8: StructAccess,
+    get_struct_field_f64: StructAccess,
+    get_struct_field_f32: StructAccess,
+    get_struct_field_obj: StructAccess,
+    set_struct_field_u64: StructAccess,
+    set_struct_field_u32: StructAccess,
+    set_struct_field_u16: StructAccess,
+    set_struct_field_u8: StructAccess,
+    set_struct_field_i64: StructAccess,
+    set_struct_field_i32: StructAccess,
+    set_struct_field_i16: StructAccess,
+    set_struct_field_i8: StructAccess,
+    set_struct_field_f64: StructAccess,
+    set_struct_field_f32: StructAccess,
+    set_struct_field_obj: StructAccess,
 
     // Arithmetic
     add_u64: Arithmetic,
@@ -395,6 +445,23 @@ pub const Instr = union(enum) {
                 const source = cp.a.literal();
                 return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = reg[{}]", .{ @tagName(self), real, source });
             },
+            .create_struct => |ct| {
+                const result = ct.result.register();
+                const kind = ct.kind.register();
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = consts[{}]", .{ @tagName(self), result, kind });
+            },
+            .get_struct_field_u64, .get_struct_field_u32, .get_struct_field_u16, .get_struct_field_u8, .get_struct_field_i64, .get_struct_field_i32, .get_struct_field_i16, .get_struct_field_i8, .get_struct_field_f64, .get_struct_field_f32, .get_struct_field_obj => |get_struct_field| {
+                const reg = get_struct_field.reg.register();
+                const this = get_struct_field.this.register();
+                const index = get_struct_field.index.field();
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = reg[{}].{}", .{ @tagName(self), reg, this, index });
+            },
+            .set_struct_field_u64, .set_struct_field_u32, .set_struct_field_u16, .set_struct_field_u8, .set_struct_field_i64, .set_struct_field_i32, .set_struct_field_i16, .set_struct_field_i8, .set_struct_field_f64, .set_struct_field_f32, .set_struct_field_obj => |set_struct_field| {
+                const reg = set_struct_field.reg.register();
+                const this = set_struct_field.this.register();
+                const index = set_struct_field.index.field();
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}].{} = reg[{}]", .{ @tagName(self), this, index, reg });
+            },
 
             // meta
             .block => |b| {
@@ -505,6 +572,7 @@ pub const IRBlock = struct {
     body: Stack(Instr),
 
     symbols: ?*SymbolTable,
+    kinds: ?*KindTable,
 
     // meta
     registers: u10 = 0,
@@ -512,13 +580,14 @@ pub const IRBlock = struct {
 
     inlining: bool = false,
 
-    pub fn create(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable) !*@This() {
+    pub fn create(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable, kinds: ?*KindTable) !*@This() {
         var result = try allocator.create(@This());
 
         result.* = @This(){
             .parent = parent,
             .body = try Stack(Instr).create(allocator, 32),
             .symbols = symbols,
+            .kinds = kinds,
         };
 
         return result;
@@ -541,6 +610,13 @@ pub const IRBlock = struct {
             return self.symbols.?;
         }
         return self.symbols.?.install(allocator, name, kind, size);
+    }
+
+    pub fn lookup_kind(self: *@This(), identifier: []const u8) ?Kind {
+        if (self.kinds == null) {
+            return self.parent.lookup_kind(identifier);
+        }
+        return self.kinds.?.lookup(identifier);
     }
 
     pub fn get_temp(self: *@This()) ?Address {
@@ -644,6 +720,10 @@ pub const IR = struct {
             return self.symbols.?;
         }
         return self.symbols.?.install(allocator, name, kind, size);
+    }
+
+    pub fn lookup_kind(self: *@This(), identifier: []const u8) ?Kind {
+        return self.kinds.lookup(identifier);
     }
 
     pub fn get_temp(self: *@This()) ?Address {
@@ -753,6 +833,14 @@ pub const IR = struct {
                     std.debug.print("      ↳ fn_body:\n", .{});
                     function.internal.body.debug(true);
                 },
+                .Kind => {
+                    const too_print = item.kind.name;
+                    std.debug.print("[{} : {s}]: {s}\n", .{
+                        i,
+                        @tagName(lk),
+                        too_print,
+                    });
+                },
 
                 // obhects that are not builtin
                 .Object => unreachable,
@@ -814,8 +902,8 @@ pub const Scope = union(enum) {
         };
     }
 
-    pub fn create_block(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable) !@This() {
-        var block = try IRBlock.create(allocator, parent, symbols);
+    pub fn create_block(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable, kinds: ?*KindTable) !@This() {
+        var block = try IRBlock.create(allocator, parent, symbols, kinds);
         return @This(){
             .block = block,
         };
@@ -867,6 +955,13 @@ pub const Scope = union(enum) {
             .block => |block| {
                 return block.parent.lookup_global(identifier);
             },
+        }
+    }
+
+    pub fn lookup_kind(self: @This(), identifier: []const u8) ?Kind {
+        switch (self) {
+            .head => |head| return head.lookup_kind(identifier),
+            .block => |block| return block.lookup_kind(identifier),
         }
     }
 
@@ -1022,13 +1117,13 @@ pub const Compiler = struct {
                 // don't emit the irblock into parent ir.
                 var detatch = false;
                 var old_depth: usize = self.depth;
-                if (extra != null and extra.?.kind() == .detach) detatch = true;
+                if (extra != null and extra.?.extra() == .detach) detatch = true;
 
                 // todo make sure this is ok
-                var to_inline = false; // = scope != .head;
+                var to_inline = false; //= scope != .head;
 
                 // todo maybe allow scoped typing
-                var block = try Scope.create_block(self.allocator, scope, s.symbols);
+                var block = try Scope.create_block(self.allocator, scope, s.symbols, s.kinds);
 
                 if (self.in_function) {
                     block.set_reg_count(block.param_count());
@@ -1068,11 +1163,23 @@ pub const Compiler = struct {
                     const kind = SymbolKind{ .resolved = s.this.? };
                     _ = try scope.install_symbol(self.allocator, s.name, kind, s.this.?.size);
                 }
+
+                _ = try self.push_literal(.{ .kind = s.this.? }, .Kind);
                 return null;
             },
             .construct => |*c| {
-                _ = c;
-                unreachable;
+                if (c.kind.? == .unresolved) {
+                    const kind_lookup = scope.lookup_kind(c.kind.?.unresolved);
+                    // error no kind found for struct instansiation.
+                    c.kind = .{ .resolved = kind_lookup.? };
+                }
+
+                const kind = self.lookup_literal(.{ .kind = c.kind.?.resolved }, .Kind).?;
+                try scope.push_instr(Instr{ .create_struct = .{ .result = result.?, .kind = kind } });
+
+                try self.generate_construct_fields(node, scope, result.?);
+
+                return null;
             },
             .variable => {
                 if (scope.is_head()) {
@@ -1357,15 +1464,18 @@ pub const Compiler = struct {
             .get => {
                 unreachable;
             },
+            .set => {
+                unreachable;
+            },
             .object => {
                 unreachable;
             },
             .literal => {
                 // todo handle no registers!
-                const address = if (result != null) result.? else scope.get_temp().?;
+                const address = result orelse scope.get_temp().?;
                 defer if (result == null) scope.drop_temp();
 
-                var moved = try self.generate_literal(node, scope, address);
+                var moved = try self.generate_literal(node, scope, address, extra);
                 if (moved != null) {
                     return moved;
                 }
@@ -1908,7 +2018,7 @@ pub const Compiler = struct {
             .result = result,
             .memory = body,
             .lit = lit,
-            .block = try self.generate(function.body.body, scope, null, Address.new_detach()),
+            .block = try self.generate(function.body.body, scope, null, Address.new_extra(.detach)),
         } });
 
         try scope.push_instr(.{ .load_literal = .{
@@ -1949,19 +2059,20 @@ pub const Compiler = struct {
         }
 
         var arg_start: ?Address = null;
+        const copy_if_move = Address.new_extra(.copy_if_move);
 
         if (call.arguments != null) {
             defer scope.drop_regs(@intCast(u10, call.arguments.?.len));
             arg_start = scope.get_reg().?;
             const args = call.arguments.?;
 
-            var ree = try self.generate(args[0], scope, arg_start, null);
+            var ree = try self.generate(args[0], scope, arg_start, copy_if_move);
             std.debug.assert(ree == null); // can't move, if you do we corrupt
 
             if (args.len > 1) {
                 for (1..args.len) |reg_i| {
                     const reg = scope.get_reg().?;
-                    ree = try self.generate(args[reg_i], scope, reg, null);
+                    ree = try self.generate(args[reg_i], scope, reg, copy_if_move);
                     std.debug.assert(ree == null); // can't move, if you do we corrupt
 
                 }
@@ -1991,7 +2102,7 @@ pub const Compiler = struct {
         }
     }
 
-    fn generate_literal(self: *@This(), node: *Node, scope: Scope, result: Address) !?Address {
+    fn generate_literal(self: *@This(), node: *Node, scope: Scope, result: Address, extra: ?Address) !?Address {
         // todo use heap, and jut mark the as non collectable
         switch (node.literal.data) {
             .integer => |val| {
@@ -2071,7 +2182,15 @@ pub const Compiler = struct {
                             .a = real_address,
                         } });
                     } else {
-                        return Address.new_register(symbol.?.binding);
+                        if (extra != null and extra.?.extra() == .copy_if_move) {
+                            try scope.push_instr(.{ .copy = .{
+                                .result = result,
+                                .a = Address.new_register(symbol.?.binding),
+                            } });
+                            return null;
+                        } else {
+                            return Address.new_register(symbol.?.binding);
+                        }
                     }
                 }
             },
@@ -2092,8 +2211,62 @@ pub const Compiler = struct {
         return null;
     }
 
-    //fn generate_binary_expression(self: *@This(), node: *Node, scope: *IRBlock) !void {
-    //}
+    fn generate_construct_fields(self: *@This(), node: *Node, scope: Scope, result: Address) !void {
+        const construct = node.construct;
+        const tmp = scope.get_temp().?;
+        defer scope.drop_temp();
+        for (construct.fields.?, 0..) |field, i| {
+            _ = try self.generate(field.value.?, scope, tmp, null);
+
+            const payload: StructAccess = .{
+                .reg = tmp,
+                .this = result,
+                .index = Address.new_field(@intCast(u56, i)),
+            };
+
+            const lk: LitKind = LitKind.from_kind(field.kind.?.resolved).?;
+            var field_copy: Instr = undefined;
+            switch (lk) {
+                LitKind.u64 => field_copy = .{ .set_struct_field_u64 = payload },
+                LitKind.u32 => field_copy = .{ .set_struct_field_u32 = payload },
+                LitKind.u16 => field_copy = .{ .set_struct_field_u16 = payload },
+                LitKind.u8 => field_copy = .{ .set_struct_field_u8 = payload },
+                LitKind.i64 => field_copy = .{ .set_struct_field_i64 = payload },
+                LitKind.i32 => field_copy = .{ .set_struct_field_i32 = payload },
+                LitKind.i16 => field_copy = .{ .set_struct_field_i16 = payload },
+                LitKind.i8 => field_copy = .{ .set_struct_field_i8 = payload },
+                LitKind.f64 => field_copy = .{ .set_struct_field_f64 = payload },
+                LitKind.f32 => field_copy = .{ .set_struct_field_f32 = payload },
+                LitKind.bool => @panic("Not implimented"),
+                LitKind.Text => @panic("Not implimented"),
+                LitKind.ExternFn => @panic("Not implimented"),
+                LitKind.InternalFn => @panic("Not implimented"),
+                LitKind.MethodSet => @panic("Not implimented"),
+                LitKind.Kind => @panic("Not implimented"),
+                LitKind.Object => field_copy = .{ .set_struct_field_obj = payload },
+            }
+            try scope.push_instr(field_copy);
+        }
+    }
+
+    fn lookup_literal(self: *@This(), literal: Item, kind: LitKind) ?Address {
+        for (self.literals_typing.as_slice(), 0..) |lk, i| {
+            if (lk != kind) {
+                continue;
+            }
+
+            const found = self.literals.get(i);
+            switch (lk) {
+                .Kind => if (found.kind == literal.kind) return Address.new_literal(@intCast(u56, i)),
+
+                // objects that are not builtin
+                .Object => unreachable,
+                else => unreachable,
+            }
+        }
+
+        return null;
+    }
 
     fn push_literal(self: *@This(), literal: Item, kind: LitKind) !Address {
         // folding consts to remove dupes
@@ -2191,4 +2364,19 @@ const LitKind = enum {
 
     // objects that are not builtin
     Object,
+    pub fn from_kind(kind: Kind) ?@This() {
+        if (std.mem.eql(u8, kind.name, "u64")) return LitKind.u64;
+        if (std.mem.eql(u8, kind.name, "u32")) return LitKind.u32;
+        if (std.mem.eql(u8, kind.name, "u16")) return LitKind.u16;
+        if (std.mem.eql(u8, kind.name, "u8")) return LitKind.u8;
+        if (std.mem.eql(u8, kind.name, "i64")) return LitKind.i64;
+        if (std.mem.eql(u8, kind.name, "i32")) return LitKind.i32;
+        if (std.mem.eql(u8, kind.name, "i16")) return LitKind.i16;
+        if (std.mem.eql(u8, kind.name, "i8")) return LitKind.i8;
+        if (std.mem.eql(u8, kind.name, "f64")) return LitKind.f64;
+        if (std.mem.eql(u8, kind.name, "f32")) return LitKind.f32;
+        if (std.mem.eql(u8, kind.name, "bool")) return LitKind.bool;
+        if (std.mem.eql(u8, kind.name, "Text")) return LitKind.Text;
+        return null;
+    }
 };

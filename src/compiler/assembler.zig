@@ -318,6 +318,18 @@ pub const Assembler = struct {
 
                 try self.push_op(opcode);
             },
+            .create_struct => |create| {
+                var opcode = Opcode.new();
+                opcode.op = Op.create_struct;
+
+                const storee = create.result.register();
+                opcode.set_a(storee);
+
+                const real = create.kind.upvalue();
+                opcode.set_y(@intCast(u22, real));
+
+                try self.push_op(opcode);
+            },
             .copy => |load| {
                 var opcode = Opcode.new();
                 opcode.op = Op.copy;
@@ -327,6 +339,336 @@ pub const Assembler = struct {
 
                 const value = load.a.register();
                 opcode.set_b(value);
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_u64 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_u64;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_u32 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_u32;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_u16 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_u16;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_u8 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_u8;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_i64 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_i64;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_i32 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_i32;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_i16 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_i16;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_i8 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_i8;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_f64 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_f64;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_f32 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_f32;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .get_struct_field_obj => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.get_struct_field_obj;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_u64 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_u64;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_u32 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_u32;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_u16 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_u16;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_u8 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_u8;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_i64 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_i64;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_i32 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_i32;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_i16 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_i16;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_i8 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_i8;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_f64 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_f64;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_f32 => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_f32;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
+
+                try self.push_op(opcode);
+            },
+            .set_struct_field_obj => |struct_access| {
+                var opcode = Opcode.new();
+                opcode.op = Op.set_struct_field_obj;
+
+                const reg = struct_access.reg.register();
+                opcode.set_a(reg);
+
+                const this = struct_access.this.register();
+                opcode.set_b(this);
+
+                const index = struct_access.index.field();
+                opcode.set_z(@intCast(u12, index));
 
                 try self.push_op(opcode);
             },
@@ -836,7 +1178,7 @@ pub const Assembler = struct {
 
             // extended
             .extended => unreachable,
-            else => unreachable,
+            else => error_(@tagName(instr)),
         }
 
         return lines_written;
@@ -847,3 +1189,8 @@ pub const Assembler = struct {
         self.op_count += 1;
     }
 };
+
+pub fn error_(missing: []const u8) void {
+    std.debug.print("[Assembler]: ({s}) not implimented.\n", .{missing});
+    @panic("");
+}

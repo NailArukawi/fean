@@ -2,15 +2,11 @@
 time : ExternFn : extern fn() -> i64;
 print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
 
-{
-
+fib : Fn : fn(fib_count: i64) -> i64 {
     // fibonacci
     a : i64 = 1;
     b : i64 = 0;
     alternate : bool = false;
-
-    // set to the desired n-th fibonacci number
-    fib_count : i64 = 92;
 
     i : i64 = 1;
     while (i < fib_count) {
@@ -24,3 +20,13 @@ print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
     if (a < b) return b;
     return a;
 }
+
+{
+    time();
+    i : i64 = 1;
+    while (i < 92) {
+        fib(i);
+        i++;
+    }
+    print_i64(time());
+} 

@@ -12,12 +12,13 @@ pub const KindMeta = struct {
 
 pub const FN_SIZE: usize = @sizeOf(vm.Function);
 pub const EXTERN_FN_SIZE: usize = @sizeOf(vm.Function);
+pub const UNSET_SIZE: usize = std.math.maxInt(usize);
 
 pub const Kind = *KindTable;
 pub const Field = *FieldList;
 pub const KindTable = struct {
     name: []const u8,
-    size: usize = std.math.maxInt(usize),
+    size: usize,
     fields: ?*FieldList,
     methods: ?Methods,
     meta: KindMeta,
@@ -73,12 +74,16 @@ pub const KindTable = struct {
         self.next = null;
     }
 
-    pub fn install(self: *@This(), name: []const u8, fields: ?*FieldList, size: usize, allocator: Allocator) !*@This() {
+    pub inline fn is_size_set(self: *@This()) bool {
+        return self.size != UNSET_SIZE;
+    }
+
+    pub fn install(self: *@This(), name: []const u8, fields: ?*FieldList, size: ?usize, allocator: Allocator) !*@This() {
         var installee = try allocator.create(@This());
         installee.default();
         installee.name = name;
         installee.fields = fields;
-        installee.size = size;
+        installee.size = size orelse UNSET_SIZE;
         installee.next = self.next;
 
         self.next = installee;
