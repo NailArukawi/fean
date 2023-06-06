@@ -1,5 +1,5 @@
 const std = @import("std");
-const fean = @import("fean/fean.zig");
+const fean = @import("mod.zig");
 
 const Point = struct { x: i64, y: i64, z: i64 };
 
@@ -16,7 +16,11 @@ pub fn main() !void {
     var file = try std.fs.cwd().openFile("scratch.fe", std.fs.File.OpenFlags{});
     defer file.close();
 
-    var vm = try fean.Fean.create(file.reader(), config);
+    const buffer_size = 1024;
+    const file_buffer = try file.readToEndAlloc(allocator, buffer_size);
+    defer allocator.free(file_buffer);
+
+    var vm = try fean.Fean.create(file_buffer, config);
     const g = vm.result().resolve_object().body.resolve(*Point);
     std.debug.print("x: {}\n", .{g.x});
     std.debug.print("y: {}\n", .{g.y});

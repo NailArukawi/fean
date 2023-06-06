@@ -13,18 +13,18 @@ pub const Parameter = @import("ast.zig").Parameter;
 pub const Field = @import("ast.zig").Field;
 pub const FunctionBody = @import("ast.zig").FunctionBody;
 
-pub const KindTable = @import("kindtable.zig").KindTable;
-pub const SymbolTable = @import("symboltable.zig").SymbolTable;
-pub const SymbolKind = @import("symboltable.zig").SymbolKind;
-pub const Symbol = @import("symboltable.zig").Symbol;
+pub const KindTable = @import("../kindtable.zig").KindTable;
+pub const SymbolTable = @import("../symboltable.zig").SymbolTable;
+pub const SymbolKind = @import("../symboltable.zig").SymbolKind;
+pub const Symbol = @import("../symboltable.zig").Symbol;
 
-const FileLookup = @import("../mod.zig").FileLookup;
-const FeanConfig = @import("../mod.zig").FeanConfig;
+const FileLookup = @import("../../fean.zig").FileLookup;
+const FeanConfig = @import("../../fean.zig").FeanConfig;
 
 const Allocator = std.mem.Allocator;
 const Map = std.AutoHashMap;
 const List = std.ArrayList;
-const Stack = @import("../stack.zig").Stack;
+const Stack = @import("../../stack.zig").Stack;
 
 pub const Parser = struct {
     allocator: Allocator,
@@ -32,7 +32,7 @@ pub const Parser = struct {
     cursor: usize,
     rooted: bool = true,
 
-    pub fn parse(src: []const u8, config: *FeanConfig) !AST {
+    pub fn parse(reader: std.fs.File.Reader, config: *FeanConfig) !AST {
         var parser = @This(){
             .allocator = config.allocator,
             .tokens = List(Token).init(config.allocator),
@@ -40,7 +40,8 @@ pub const Parser = struct {
             .rooted = true,
         };
 
-        var scanner = try Scanner.new(src, config);
+        var scanner_buffer: [16]u8 = undefined;
+        var scanner = try Scanner(std.fs.File.Reader).new(&scanner_buffer, reader, config);
 
         while (true) {
             const next = try scanner.next_token();
@@ -49,8 +50,7 @@ pub const Parser = struct {
             }
 
             const span = next.span;
-            _ = span;
-            //std.debug.print("[{}:{}] scanned:\t{}\n", .{ span.line, span.pos, next.data });
+            std.debug.print("[{}:{}] scanned:\t{}\n", .{ span.line, span.pos, next.data });
 
             try parser.tokens.append(next);
         }

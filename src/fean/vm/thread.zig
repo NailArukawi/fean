@@ -17,7 +17,6 @@ const Text = @import("mod.zig").Text;
 const Dict = @import("mod.zig").Dict;
 
 const Stack = @import("../stack.zig").Stack;
-const DynamicBitSet = @import("../dynamicbitset.zig").DynamicBitSet;
 const AssembledResult = @import("../compiler/mod.zig").AssembledResult;
 const CompilerMeta = @import("../compiler/mod.zig").CompilerMeta;
 

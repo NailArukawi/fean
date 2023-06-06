@@ -1,5 +1,5 @@
 const std = @import("std");
-
+const Span = @import("mod.zig").Span;
 const List = std.ArrayList;
 
 pub const Token = struct {
@@ -57,32 +57,6 @@ pub const Token = struct {
             .data = TokenData{
                 .keyword = val,
             },
-        };
-    }
-};
-
-pub const Span = packed struct {
-    line: u32,
-    pos: u32,
-    len: u32,
-    file_id: u32,
-
-    pub inline fn newline(self: *@This()) void {
-        self.line += 1;
-        self.pos = 0;
-    }
-
-    pub inline fn reset(self: *@This()) void {
-        self.pos += self.len;
-        self.len = 0;
-    }
-
-    pub inline fn default() @This() {
-        return @This(){
-            .line = 1,
-            .pos = 1,
-            .len = 0,
-            .file_id = 0,
         };
     }
 };

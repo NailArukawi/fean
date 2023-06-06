@@ -103,5 +103,9 @@ pub fn Stack(comptime T: type) type {
         pub inline fn count(self: *const @This()) usize {
             return self.used;
         }
+
+        pub inline fn clear(self: *@This()) void {
+            self.used = 0;
+        }
     };
 }

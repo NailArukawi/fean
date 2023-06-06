@@ -1,20 +1,22 @@
 const std = @import("std");
 
-const Token = @import("token.zig").Token;
-const Span = @import("token.zig").Span;
-const TokenData = @import("token.zig").TokenData;
-const TokenKind = @import("token.zig").TokenKind;
+const mod = @import("mod.zig");
+const Token = mod.parser.Token;
+const Span = mod.parser.Span;
+const TokenData = mod.parser.TokenData;
+const TokenKind = mod.parser.TokenKind;
 
-const Symbol = @import("symboltable.zig").Symbol;
-const SymbolTable = @import("symboltable.zig").SymbolTable;
-const SymbolKind = @import("symboltable.zig").SymbolKind;
-const Kind = @import("kindtable.zig").Kind;
-const KindTable = @import("kindtable.zig").KindTable;
-const FieldList = @import("kindtable.zig").FieldList;
-const Parser = @import("parser.zig").Parser;
-const AST = @import("parser.zig").AST;
-const Parameter = @import("parser.zig").Parameter;
-const Node = @import("parser.zig").Node;
+const Parser = mod.parser.Parser;
+const AST = mod.parser.AST;
+const Parameter = mod.parser.Parameter;
+const Node = mod.parser.Node;
+
+const Symbol = mod.Symbol;
+const SymbolTable = mod.SymbolTable;
+const SymbolKind = mod.SymbolKind;
+const Kind = mod.Kind;
+const KindTable = mod.KindTable;
+const FieldList = mod.FieldList;
 
 const Stack = @import("../stack.zig").Stack;
 const Allocator = std.mem.Allocator;

@@ -1,14 +1,17 @@
 const std = @import("std");
 
-const Symbol = @import("symboltable.zig").Symbol;
-const SymbolKind = @import("symboltable.zig").SymbolKind;
-const SymbolTable = @import("symboltable.zig").SymbolTable;
-const Kind = @import("kindtable.zig").Kind;
-const KindTable = @import("kindtable.zig").KindTable;
-const Parser = @import("parser.zig").Parser;
-const Resolver = @import("resolver.zig").Resolver;
-const AST = @import("parser.zig").AST;
-const Node = @import("parser.zig").Node;
+const mod = @import("mod.zig");
+const Parser = mod.parser.Parser;
+const AST = mod.parser.AST;
+const Node = mod.parser.Node;
+
+const Resolver = mod.Resolver;
+const Symbol = mod.Symbol;
+const SymbolKind = mod.SymbolKind;
+const SymbolTable = mod.SymbolTable;
+const Kind = mod.Kind;
+const KindTable = mod.KindTable;
+
 const Item = @import("../vm/mod.zig").Item;
 const Function = @import("../vm/mod.zig").Function;
 const Text = @import("../vm/mod.zig").Text;
@@ -16,7 +19,7 @@ const Object = @import("../vm/mod.zig").Object;
 const Stack = @import("../stack.zig").Stack;
 const heap = @import("../vm/heap.zig");
 
-const FeanConfig = @import("../mod.zig").FeanConfig;
+const FeanConfig = @import("../fean.zig").FeanConfig;
 
 const List = std.ArrayList;
 const Allocator = std.mem.Allocator;
@@ -1057,8 +1060,8 @@ pub const Compiler = struct {
     in_function: bool = false,
     function_head_depth: u56 = 0,
 
-    pub fn compile(src: []const u8, config: *FeanConfig, meta: *CompilerMeta) !*IR {
-        var ast = try Parser.parse(src, config);
+    pub fn compile(reader: std.fs.File.Reader, config: *FeanConfig, meta: *CompilerMeta) !*IR {
+        var ast = try Parser.parse(reader, config);
 
         try Resolver.resolve(&ast, config.allocator);
 

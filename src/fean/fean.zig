@@ -9,11 +9,11 @@ pub const Fean = struct {
     thread: *vm.Thread,
     compiler_meta: *compiler.CompilerMeta,
 
-    pub fn create(src: []const u8, config: *FeanConfig) !@This() {
+    pub fn create(reader: std.fs.File.Reader, config: *FeanConfig) !@This() {
         var compiler_meta = try compiler.CompilerMeta.default(config.allocator);
 
         // compiles a text file into a semi-linear instruction stack
-        var ir = try compiler.Compiler.compile(src, config, compiler_meta);
+        var ir = try compiler.Compiler.compile(reader, config, compiler_meta);
         //var chunk = try compiler.Compiler.compile(ir_chunck, config.allocator)
 
         // transform the semi-linear instructions into somthing the thread can execute
@@ -49,7 +49,7 @@ pub const FeanConfig = struct {
     silent: bool = false,
 
     file_debug: bool = false,
-    file_lookup: ?*const fn (compiler.token.Span) FileLookup = null,
+    file_lookup: ?*const fn (compiler.parser.Span) FileLookup = null,
 
     fn_lookup: ?*const fn (name: []const u8) ?*const fn (args: []vm.Item, result: ?*vm.Item) void,
 

@@ -7,7 +7,5 @@ struct Point {
 }
 
 zamn : Point = Point { .x = 1, .y = 2, .z = 3 };
-zamn.x = 2;
-zamn.y = 4;
-zamn.z = 6;
+
 return zamn;

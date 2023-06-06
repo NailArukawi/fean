@@ -2,12 +2,14 @@ const std = @import("std");
 const List = std.ArrayList;
 const Allocator = std.mem.Allocator;
 
-const Token = @import("token.zig").Token;
-const Symbol = @import("symboltable.zig").Symbol;
-const SymbolTable = @import("symboltable.zig").SymbolTable;
-const SymbolKind = @import("symboltable.zig").SymbolKind;
-const KindTable = @import("kindtable.zig").KindTable;
-const Kind = @import("kindtable.zig").Kind;
+const mod = @import("mod.zig");
+const Token = mod.Token;
+const Span = mod.Span;
+const Symbol = @import("../symboltable.zig").Symbol;
+const SymbolTable = @import("../symboltable.zig").SymbolTable;
+const SymbolKind = @import("../symboltable.zig").SymbolKind;
+const KindTable = @import("../kindtable.zig").KindTable;
+const Kind = @import("../kindtable.zig").Kind;
 
 pub const AST = struct {
     head: []*Node,
@@ -35,6 +37,7 @@ pub const FunctionBody = union {
 
 pub const Node = union(enum) {
     scope: struct {
+        //span: Span,
         parent: ?*Node,
         statments: ?[]*Node,
         symbols: ?*SymbolTable,
@@ -134,71 +137,85 @@ pub const Node = union(enum) {
         }
     },
     structure: struct {
+        //span: Span,
         name: []const u8,
         symbol: ?Symbol,
         this: ?Kind,
         fields: ?[]Field,
     },
     construct: struct {
+        //span: Span,
         kind: ?SymbolKind,
         fields: ?[]Field,
     },
     variable: struct {
+        //span: Span,
         name: []const u8,
         symbol: ?Symbol,
         kind: ?SymbolKind,
         value: ?*Node,
     },
     constant: struct {
+        //span: Span,
         name: []const u8,
         symbol: ?Symbol,
         kind: ?SymbolKind,
         value: *Node,
     },
     assignment: struct {
+        //span: Span,
         name: []const u8,
         symbol: ?Symbol,
         value: *Node,
     },
     function: struct {
+        //span: Span,
         params: []Parameter,
         result: ?SymbolKind,
         body: FunctionBody,
         is_extern: bool,
     },
     statment: struct {
+        //span: Span,
         kind: StatmentKind,
         value: ?*Node,
     },
     conditional_if: struct {
+        //span: Span,
         condition: *Node,
         if_then: *Node,
         if_else: ?*Node,
     },
     conditional_while: struct {
+        //span: Span,
         condition: *Node,
         body: *Node,
     },
     binary_expression: struct {
+        //span: Span,
         kind: ?SymbolKind,
         lhs: *Node,
         op: Token,
         rhs: *Node,
     },
     unary_expression: struct {
+        //span: Span,
         op: Token,
         value: *Node,
     },
     call: struct {
+        //span: Span,
         name: []const u8,
         symbol: ?Symbol,
         arguments: ?[]*Node,
     },
     get: struct {
+        //span: Span,
         name: []const u8,
         object: *Node,
     },
     set: struct {
+        //span: Span,
         name: []const u8,
         object: *Node,
     },
