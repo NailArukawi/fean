@@ -1,8 +1,6 @@
 const std = @import("std");
 const fean = @import("fean/fean.zig");
 
-const Point = struct { x: i64, y: i64, z: i64 };
-
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -17,11 +15,7 @@ pub fn main() !void {
     defer file.close();
 
     var vm = try fean.Fean.create(file.reader(), config);
-    const g = vm.result().resolve_object().body.resolve(*Point);
-    std.debug.print("x: {}\n", .{g.x});
-    std.debug.print("y: {}\n", .{g.y});
-    std.debug.print("z: {}\n", .{g.z});
-    vm.thread.heap.debug();
+    _ = vm;
 }
 
 const fean_fn = *const fn (args: []fean.vm.Item, result: ?*fean.vm.Item) void;

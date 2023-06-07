@@ -338,12 +338,88 @@ pub const Thread = struct {
                     const value = opcode.b();
                     self.register[result] = self.register[value];
                 },
+                .set_struct_field_u64 => {
+                    const value = self.register[opcode.a()].u64;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(u64)[index] = value;
+                },
+                .set_struct_field_u32 => {
+                    const value = self.register[opcode.a()].u32;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(u32)[index] = value;
+                },
+                .set_struct_field_u16 => {
+                    const value = self.register[opcode.a()].u16;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(u16)[index] = value;
+                },
+                .set_struct_field_u8 => {
+                    const value = self.register[opcode.a()].u8;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(u8)[index] = value;
+                },
                 .set_struct_field_i64 => {
                     const value = self.register[opcode.a()].i64;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
                     this.body.resolve_array(i64)[index] = value;
+                },
+                .set_struct_field_i32 => {
+                    const value = self.register[opcode.a()].i32;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(i32)[index] = value;
+                },
+                .set_struct_field_i16 => {
+                    const value = self.register[opcode.a()].i16;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(i16)[index] = value;
+                },
+                .set_struct_field_i8 => {
+                    const value = self.register[opcode.a()].i8;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(i8)[index] = value;
+                },
+                .set_struct_field_f64 => {
+                    const value = self.register[opcode.a()].f64;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(f64)[index] = value;
+                },
+                .set_struct_field_f32 => {
+                    const value = self.register[opcode.a()].f32;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(f32)[index] = value;
+                },
+                .set_struct_field_obj => {
+                    const value = self.register[opcode.a()].object;
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    this.body.resolve_array(*Ref)[index] = value;
+                },
+                .get_struct_field_i64 => {
+                    const this: *Object = self.register[opcode.b()].resolve_object();
+                    const index = opcode.z();
+
+                    self.register[opcode.a()] = Item.from(i64, this.body.resolve_array(i64)[index]);
                 },
 
                 // Arithmetic

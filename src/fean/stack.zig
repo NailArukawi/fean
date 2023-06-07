@@ -105,6 +105,7 @@ pub fn Stack(comptime T: type) type {
         }
 
         pub inline fn clear(self: *@This()) void {
+            @memset(self.as_slice(), std.mem.zeroes(T));
             self.used = 0;
         }
     };

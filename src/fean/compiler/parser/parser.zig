@@ -11,6 +11,7 @@ pub const AST = @import("ast.zig").AST;
 pub const Node = @import("ast.zig").Node;
 pub const Parameter = @import("ast.zig").Parameter;
 pub const Field = @import("ast.zig").Field;
+pub const FieldOrName = @import("ast.zig").FieldOrName;
 pub const FunctionBody = @import("ast.zig").FunctionBody;
 
 pub const KindTable = @import("../kindtable.zig").KindTable;
@@ -41,7 +42,8 @@ pub const Parser = struct {
         };
 
         var scanner_buffer: [16]u8 = undefined;
-        var scanner = try Scanner(std.fs.File.Reader).new(&scanner_buffer, reader, config);
+        var scanner = try Scanner(std.fs.File.Reader).create(&scanner_buffer, reader, config);
+        defer scanner.destroy();
 
         while (true) {
             const next = try scanner.next_token();
@@ -49,8 +51,12 @@ pub const Parser = struct {
                 break;
             }
 
-            const span = next.span;
-            std.debug.print("[{}:{}] scanned:\t{}\n", .{ span.line, span.pos, next.data });
+            //const span = next.span;
+            //if (next.data == .identifier) {
+            //    std.debug.print("[{}:{}] scanned(Identifier):\t{s}\n", .{ span.line, span.pos, next.data.identifier });
+            //} else {
+            //    std.debug.print("[{}:{}] scanned( ? ):\t{}\n", .{ span.line, span.pos, next.data });
+            //}
 
             try parser.tokens.append(next);
         }
@@ -82,6 +88,7 @@ pub const Parser = struct {
             sym = sym.?.next;
         }
 
+        parser.tokens.deinit();
         return ast;
     }
 
@@ -484,7 +491,18 @@ pub const Parser = struct {
             return self.expression_inc_dec(scope);
         }
 
-        return self.equality(scope);
+        const result = self.equality(scope);
+
+        if (result.* == .get and self.of_kind(.equal)) { // *.X =
+            return self.expression_set(scope, result);
+        }
+
+        if (result.* == .get and (self.check_next(.plus_equal) or self.check_next(.minus_equal) or self.check_next(.slash_equal) or self.check_next(.star_equal)) // *.x (+|-|/|*)=
+        ) {
+            return self.expression_set(scope, result);
+        }
+
+        return result;
     }
 
     fn expression_inc_dec(self: *@This(), scope: *Node) *Node {
@@ -496,7 +514,45 @@ pub const Parser = struct {
         return result;
     }
 
-    // todo lookup symbol
+    fn expression_set(self: *@This(), scope: *Node, get: *Node) *Node {
+        const field = get.get.field;
+        const object = get.get.object;
+
+        const is_short = (self.check(.plus_equal) or self.check(.minus_equal) or self.check(.slash_equal) or self.check(.star_equal));
+        var short: ?Token = null;
+        if (is_short) {
+            if (self.check(.plus_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.plus, old.span);
+            } else if (self.check(.minus_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.minus, old.span);
+            } else if (self.check(.slash_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.slash, old.span);
+            } else if (self.check(.star_equal)) {
+                const old = self.pop().?;
+                short = Token.new_symbol(.star, old.span);
+            } else {
+                unreachable;
+            }
+        } else {
+            _ = self.pop().?; // =
+        }
+
+        var value = self.equality(scope);
+        if (is_short) {
+            var result = self.allocator.create(Node) catch unreachable;
+            var expanded = self.allocator.create(Node) catch unreachable;
+            expanded.* = Node{ .binary_expression = .{ .lhs = get, .op = short.?, .rhs = value, .kind = null } };
+            result.* = Node{ .set = .{ .field = field, .object = object, .kind = null, .value = expanded } };
+            return result;
+        } else {
+            get.* = Node{ .set = .{ .field = field, .object = object, .kind = null, .value = value } };
+            return get;
+        }
+    }
+
     fn expression_assignment(self: *@This(), scope: *Node) *Node {
         var identity = self.pop().?;
         const is_short = (self.check(.plus_equal) or self.check(.minus_equal) or self.check(.slash_equal) or self.check(.star_equal));
@@ -530,7 +586,6 @@ pub const Parser = struct {
 
             var expanded = self.allocator.create(Node) catch unreachable;
             expanded.* = Node{ .binary_expression = .{ .lhs = this, .op = short.?, .rhs = value, .kind = null } };
-
             result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = expanded } };
         } else {
             result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = value } };
@@ -645,7 +700,8 @@ pub const Parser = struct {
                 result.* = Node{
                     .get = .{
                         // todo mem leak
-                        .name = name.data.identifier,
+                        .field = FieldOrName{ .unresolved = name.data.identifier },
+                        .kind = null,
                         .object = expr,
                     },
                 };
@@ -849,7 +905,8 @@ pub const Parser = struct {
         if (self.check(kind)) {
             return;
         } else {
-            std.debug.panic("{s}\n", .{err});
+            var p = self.peek().?;
+            std.debug.panic("[{}:{}]: {s} ({?})\n", .{ p.span.line, p.span.pos, err, p.data });
         }
     }
 

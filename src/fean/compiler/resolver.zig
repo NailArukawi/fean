@@ -17,6 +17,8 @@ const SymbolKind = mod.SymbolKind;
 const Kind = mod.Kind;
 const KindTable = mod.KindTable;
 const FieldList = mod.FieldList;
+const Field = mod.Field;
+const FieldOrName = mod.parser.FieldOrName;
 
 const Stack = @import("../stack.zig").Stack;
 const Allocator = std.mem.Allocator;
@@ -110,24 +112,24 @@ pub const Resolver = struct {
             .symbols = ast.symbols,
         };
 
-        for (ast.head) |node| {
-            try resolver.visit(node, &head);
-        }
-    }
-
-    fn visit(self: *@This(), node: *Node, scope: *Scope) !void {
-        try self.expand_visit(node, scope);
-        _ = try self.kind_visit(node, scope);
-        try self.symbol_visit(node, scope);
-        try self.struct_resolve();
+        // todo make smarter.. maybe make each node remember itself in a list,
+        // so that we can process said list later when we run out of work that is this run solvable
+        for (ast.head) |node| try resolver.expand_visit(node, &head);
+        try resolver.struct_resolve();
+        for (ast.head) |node| _ = try resolver.symbol_visit(node, &head);
+        for (ast.head) |node| _ = try resolver.kind_visit(node, &head);
+        for (resolver.structs_todo.as_slice()) |*todo|
+            todo.is_complete = false;
+        try resolver.struct_resolve();
+        for (ast.head) |node| _ = try resolver.kind_visit(node, &head);
+        for (ast.head) |node| _ = try resolver.symbol_visit(node, &head);
     }
 
     fn expand_visit(self: *@This(), node: *Node, scope: *Scope) !void {
         switch (node.*) {
             .scope => |s| {
-                if (s.statments == null) {
+                if (s.statments == null)
                     return;
-                }
 
                 var head = Scope{
                     .parent = scope,
@@ -139,8 +141,23 @@ pub const Resolver = struct {
                     try self.expand_visit(scope_node, &head);
                 }
             },
-            .structure => |s| {
-                _ = s;
+            .structure => |*s| {
+                if (scope.lookup_kind(s.name) != null)
+                    return;
+
+                for (s.fields.?, 0..) |field, i| {
+                    if (field.kind.? == .unresolved) {
+                        const kind_result = scope.lookup_kind(field.kind.?.unresolved);
+                        if (kind_result != null) {
+                            s.fields.?[i].kind = SymbolKind{ .resolved = kind_result.? };
+                        }
+                    }
+                }
+
+                const this = try scope.install_kind(s.name, null, null, self.allocator);
+                s.this = this;
+
+                try self.structs_todo.push(TodoStruct{ .todo = node, .scope = scope });
             },
             .construct => |c| {
                 _ = c;
@@ -258,9 +275,8 @@ pub const Resolver = struct {
     fn kind_visit(self: *@This(), node: *Node, scope: *Scope) !?SymbolKind {
         switch (node.*) {
             .scope => |s| {
-                if (s.statments == null) {
+                if (s.statments == null)
                     return null;
-                }
 
                 var head = Scope{
                     .parent = scope,
@@ -275,21 +291,7 @@ pub const Resolver = struct {
                 // todo maybe allow a scope to be a kind
                 return null;
             },
-            .structure => |*s| {
-                for (s.fields.?, 0..) |field, i| {
-                    if (field.kind.? == .unresolved) {
-                        const kind_result = scope.lookup_kind(field.kind.?.unresolved);
-                        if (kind_result != null) {
-                            s.fields.?[i].kind = SymbolKind{ .resolved = kind_result.? };
-                        }
-                    }
-                }
-
-                const this = try scope.install_kind(s.name, null, null, self.allocator);
-                s.this = this;
-
-                try self.structs_todo.push(TodoStruct{ .todo = node, .scope = scope });
-
+            .structure => {
                 return null;
             },
             .construct => |*c| {
@@ -501,13 +503,30 @@ pub const Resolver = struct {
 
                 return null;
             },
-            .get => |g| {
-                _ = g;
-                unreachable;
+            .get => |*g| {
+                //if (g.object.* == .get or g.object.* == .set) {
+                //    const child_kind: Kind = (try self.kind_visit(g.object, scope)).?.resolved;
+                //    return SymbolKind{ .resolved = child_kind.lookup_field(g.name).?.kind };
+                //}
+                const accessing = (try self.kind_visit(g.object, scope)).?;
+                if (g.kind == null)
+                    g.kind = accessing;
+                if (g.field == .unresolved)
+                    g.field = FieldOrName{ .resolved = accessing.resolved.lookup_field(g.field.unresolved) orelse return null };
+
+                return g.kind;
             },
             .set => |s| {
                 _ = s;
+
                 unreachable;
+                //if (s.object.* == .get or s.object.* == .set) {
+                //    const child_kind: Kind = (try self.kind_visit(s.object, scope)).?.resolved;
+                //    return SymbolKind{ .resolved = child_kind.lookup_field(s.name).?.kind };
+                //}
+                //
+                //_ = try self.kind_visit(s.value, scope);
+                //return self.kind_visit(s.object, scope);
             },
             .object => |o| {
                 _ = o;
@@ -677,9 +696,8 @@ pub const Resolver = struct {
             }
         }
 
-        for (self.structs_todo.as_slice()) |*todo| {
+        for (self.structs_todo.as_slice()) |*todo|
             todo.is_complete = false;
-        }
 
         all_done = false;
         work_done = true;
@@ -694,22 +712,21 @@ pub const Resolver = struct {
             }
         }
 
-        for (self.structs_todo.as_slice()) |*todo| {
-            todo.is_complete = false;
-        }
-
-        all_done = false;
-        work_done = true;
-        while (!all_done and work_done) {
-            all_done = true;
-            work_done = false;
-            for (self.structs_todo.as_slice()) |*todo| {
-                if (todo.is_complete) continue;
-                all_done = false;
-
-                if (process_struct_size(todo)) work_done = true;
-            }
-        }
+        //for (self.structs_todo.as_slice()) |*todo|
+        //    todo.is_complete = false;
+        //
+        //all_done = false;
+        //work_done = true;
+        //while (!all_done and work_done) {
+        //    all_done = true;
+        //    work_done = false;
+        //    for (self.structs_todo.as_slice()) |*todo| {
+        //        if (todo.is_complete) continue;
+        //        all_done = false;
+        //
+        //        if (process_struct_size(todo)) work_done = true;
+        //    }
+        //}
     }
 };
 
@@ -717,12 +734,14 @@ fn process_struct(todo: *TodoStruct) bool {
     var work_done: bool = false;
     var structure = &todo.todo.structure;
     for (structure.fields.?, 0..) |field, i| {
-        if (field.kind.? == .resolved) continue;
-        const unresolved = field.kind.?.unresolved;
-        const kind = todo.scope.lookup_kind(unresolved);
-        if (kind == null) continue;
-        work_done = true;
-        structure.fields.?[i].kind = SymbolKind{ .resolved = kind.? };
+        if (field.kind.? == .unresolved) //continue here was an error idk why.
+        {
+            const unresolved = field.kind.?.unresolved;
+            const kind = todo.scope.lookup_kind(unresolved);
+            if (kind == null) continue;
+            work_done = true;
+            structure.fields.?[i].kind = SymbolKind{ .resolved = kind.? };
+        }
     }
 
     return work_done;
@@ -730,6 +749,8 @@ fn process_struct(todo: *TodoStruct) bool {
 
 fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
     var structure = &todo.todo.structure;
+    if (structure.this.?.fields != null)
+        return false;
 
     var largest: usize = 0;
     for (structure.fields.?) |field| {
@@ -748,51 +769,81 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
     if (largest > 4) actual_alignment = 8;
 
     var size: usize = 0;
-    for (structure.fields.?, 0..) |field, i| {
-        if (i == 0) {
-            size += field.kind.?.resolved.size;
-        } else if (actual_alignment == 1) {
-            size += field.kind.?.resolved.size;
-            var result = try field.kind.?.resolved.install_field(field.name, field.kind.?.resolved, allocator);
-            result.*.padding = 0;
-            result.*.alignment = 1;
+    var fields: ?*FieldList = null;
+    for (structure.fields.?) |field| {
+        if (actual_alignment == 1) {
+            const field_kind = switch (field.kind orelse return false) {
+                .resolved => |r| r,
+                .unresolved => return false,
+            };
+
+            size += field_kind.size;
+
+            var result: Field = undefined;
+            if (fields == null) {
+                fields = try FieldList.create(field.name, field_kind, allocator);
+                fields.?.*.padding = 0;
+                fields.?.*.alignment = 1;
+            } else {
+                result = try fields.?.install(field.name, field_kind, allocator);
+                result.*.padding = 0;
+                result.*.alignment = 1;
+            }
         } else {
             const closest = closest_aligned(size, actual_alignment);
             const padding = closest - size;
-            var result = try field.kind.?.resolved.install_field(field.name, field.kind.?.resolved, allocator);
-            result.*.padding = @intCast(u2, padding << 1);
-            result.*.alignment = alignment;
+            const shifted_padding = @shlWithOverflow(padding, 1)[0];
+            const field_kind = switch (field.kind orelse return false) {
+                .resolved => |r| r,
+                .unresolved => return false,
+            };
+
+            var result: Field = undefined;
+            if (fields == null) {
+                fields = try FieldList.create(field.name, field_kind, allocator);
+                fields.?.*.padding = @truncate(u2, shifted_padding);
+                fields.?.*.alignment = alignment;
+            } else {
+                result = try fields.?.install(field.name, field_kind, allocator);
+                result.*.padding = @truncate(u2, shifted_padding);
+                result.*.alignment = alignment;
+            }
+
+            size += (field_kind.size + padding);
         }
     }
 
     todo.is_complete = true;
+    structure.this.?.size = size;
+    structure.this.?.fields = fields;
+    allocator.free(structure.fields.?);
 
     return true;
 }
 
-fn process_struct_size(todo: *TodoStruct) bool {
-    var fields_sized: bool = true;
-    const fields = todo.todo.structure.fields.?;
-    for (fields) |field| {
-        if (!field.kind.?.resolved.is_size_set()) fields_sized = false;
-    }
-
-    if (!fields_sized) return false;
-
-    var size: usize = 0;
-
-    for (fields) |field| {
-        const kind = field.kind.?.resolved;
-        size += kind.size;
-    }
-
-    todo.todo.structure.this.?.size = size;
-    todo.is_complete = true;
-
-    // TODO IMPORTANT alignment!
-
-    return true;
-}
+//fn process_struct_size(todo: *TodoStruct) bool {
+//    var fields_sized: bool = true;
+//    const fields = todo.todo.structure.fields.?;
+//    for (fields) |field| {
+//        if (!field.kind.?.resolved.is_size_set()) fields_sized = false;
+//    }
+//
+//    if (!fields_sized) return false;
+//
+//    var size: usize = 0;
+//
+//    for (fields) |field| {
+//        const kind = field.kind.?.resolved;
+//        size += kind.size;
+//    }
+//
+//    todo.todo.structure.this.?.size = size;
+//    todo.is_complete = true;
+//
+//    // TODO IMPORTANT alignment!
+//
+//    return true;
+//}
 
 fn closest_aligned(starting: usize, alignment: u8) usize {
     var closest: usize = 0;

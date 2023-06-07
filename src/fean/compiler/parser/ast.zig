@@ -35,6 +35,11 @@ pub const FunctionBody = union {
     body: *Node,
 };
 
+pub const FieldOrName = union(enum) {
+    resolved: @import("../kindtable.zig").Field,
+    unresolved: []const u8,
+};
+
 pub const Node = union(enum) {
     scope: struct {
         //span: Span,
@@ -211,13 +216,16 @@ pub const Node = union(enum) {
     },
     get: struct {
         //span: Span,
-        name: []const u8,
+        field: FieldOrName,
+        kind: ?SymbolKind,
         object: *Node,
     },
     set: struct {
         //span: Span,
-        name: []const u8,
+        field: FieldOrName,
+        kind: ?SymbolKind,
         object: *Node,
+        value: *Node,
     },
     object: *Node,
     literal: Token,

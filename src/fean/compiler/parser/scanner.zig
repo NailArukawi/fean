@@ -133,7 +133,7 @@ pub fn Scanner(comptime Reader: type) type {
         cursor: Span,
         config: *FeanConfig,
 
-        pub fn new(buffer: []u8, reader: Reader, config: *FeanConfig) anyerror!@This() {
+        pub fn create(buffer: []u8, reader: Reader, config: *FeanConfig) anyerror!@This() {
             std.debug.assert(buffer.len > 3);
             return @This(){
                 .stream = Stream.new(buffer, reader),
@@ -141,6 +141,10 @@ pub fn Scanner(comptime Reader: type) type {
                 .cursor = Span.default(),
                 .config = config,
             };
+        }
+
+        pub fn destroy(self: *@This()) void {
+            self.buffer.destroy();
         }
 
         pub fn next_token(self: *@This()) !Token {

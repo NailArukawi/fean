@@ -15,7 +15,6 @@ pub const EXTERN_FN_SIZE: usize = @sizeOf(vm.Function);
 pub const UNSET_SIZE: usize = std.math.maxInt(usize);
 
 pub const Kind = *KindTable;
-pub const Field = *FieldList;
 pub const KindTable = struct {
     name: []const u8,
     size: usize,
@@ -124,6 +123,11 @@ pub const KindTable = struct {
         }
     }
 
+    pub fn lookup_field(self: *@This(), name: []const u8) ?Field {
+        const fields = self.fields orelse return null;
+        return fields.lookup(name);
+    }
+
     pub fn last(self: *@This()) *@This() {
         var cursor = self;
         while (cursor.next != null) {
@@ -133,9 +137,11 @@ pub const KindTable = struct {
     }
 };
 
+pub const Field = *FieldList;
 pub const FieldList = struct {
     name: []const u8,
     kind: Kind,
+    index: usize,
     // (leftshift) or (1 if 0)
     alignment: u2 = 0,
     padding: u2 = 0,
@@ -145,6 +151,7 @@ pub const FieldList = struct {
         var installee = try allocator.create(@This());
         installee.name = name;
         installee.kind = kind;
+        installee.index = 0;
         installee.alignment = 0;
         installee.padding = 0;
         installee.next = null;
@@ -161,6 +168,7 @@ pub const FieldList = struct {
         var installee = try allocator.create(@This());
         installee.name = name;
         installee.kind = kind;
+        installee.index = cursor.index + 1;
         installee.next = null;
 
         cursor.next = installee;
@@ -169,11 +177,11 @@ pub const FieldList = struct {
 
     pub fn lookup(self: *@This(), name: []const u8) ?*@This() {
         var cursor = self;
-        while (cursor.next != null and !std.mem.eql([]const u8, cursor.name, name)) {
+        while ((cursor.next != null) and !std.mem.eql(u8, cursor.name, name)) {
             cursor = cursor.next.?;
         }
 
-        if (std.mem.eql([]const u8, cursor.name, name)) {
+        if (std.mem.eql(u8, cursor.name, name)) {
             return cursor;
         } else {
             return null;

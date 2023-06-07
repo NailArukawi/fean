@@ -42,6 +42,7 @@ pub const AST = ast.AST;
 pub const Node = ast.Node;
 pub const Parameter = ast.Parameter;
 pub const Field = ast.Field;
+pub const FieldOrName = ast.FieldOrName;
 pub const FunctionBody = ast.FunctionBody;
 pub const StatmentKind = ast.StatmentKind;
 

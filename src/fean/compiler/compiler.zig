@@ -1464,8 +1464,25 @@ pub const Compiler = struct {
 
                 try self.generate_call(node, scope, address, extra);
             },
-            .get => {
-                unreachable;
+            .get => |g| {
+                const child = (try self.generate(g.object, scope, null, null)).?;
+
+                // todo handle no registers!
+                const address = if (result != null) result.? else scope.get_temp().?;
+                defer if (result == null) scope.drop_temp();
+
+                const kind_name = g.field.resolved.kind.name;
+                const field = g.field.resolved;
+                const access = StructAccess{
+                    .reg = address,
+                    .this = child,
+                    .index = Address.new_field(@intCast(u56, field.index)),
+                };
+                if (mem.eql(u8, kind_name, "u64")) {
+                    try scope.push_instr(Instr{ .get_struct_field_u64 = access });
+                } else if (mem.eql(u8, kind_name, "i64")) {
+                    try scope.push_instr(Instr{ .get_struct_field_i64 = access });
+                }
             },
             .set => {
                 unreachable;
@@ -1479,9 +1496,11 @@ pub const Compiler = struct {
                 defer if (result == null) scope.drop_temp();
 
                 var moved = try self.generate_literal(node, scope, address, extra);
-                if (moved != null) {
+                if (moved != null)
                     return moved;
-                }
+
+                if (result == null)
+                    return address;
             },
         }
 
@@ -2227,7 +2246,7 @@ pub const Compiler = struct {
                 .index = Address.new_field(@intCast(u56, i)),
             };
 
-            const lk: LitKind = LitKind.from_kind(field.kind.?.resolved).?;
+            const lk: LitKind = LitKind.from_kind(field.kind.?.resolved);
             var field_copy: Instr = undefined;
             switch (lk) {
                 LitKind.u64 => field_copy = .{ .set_struct_field_u64 = payload },
@@ -2247,6 +2266,12 @@ pub const Compiler = struct {
                 LitKind.MethodSet => @panic("Not implimented"),
                 LitKind.Kind => @panic("Not implimented"),
                 LitKind.Object => field_copy = .{ .set_struct_field_obj = payload },
+                LitKind.Custom => {
+                    const moved = try self.generate(field.value.?, scope, tmp, null);
+                    if (moved != null)
+                        @panic("Moving here is not handled");
+                    field_copy = .{ .set_struct_field_obj = payload };
+                },
             }
             try scope.push_instr(field_copy);
         }
@@ -2367,7 +2392,8 @@ const LitKind = enum {
 
     // objects that are not builtin
     Object,
-    pub fn from_kind(kind: Kind) ?@This() {
+    Custom,
+    pub fn from_kind(kind: Kind) @This() {
         if (std.mem.eql(u8, kind.name, "u64")) return LitKind.u64;
         if (std.mem.eql(u8, kind.name, "u32")) return LitKind.u32;
         if (std.mem.eql(u8, kind.name, "u16")) return LitKind.u16;
@@ -2380,6 +2406,6 @@ const LitKind = enum {
         if (std.mem.eql(u8, kind.name, "f32")) return LitKind.f32;
         if (std.mem.eql(u8, kind.name, "bool")) return LitKind.bool;
         if (std.mem.eql(u8, kind.name, "Text")) return LitKind.Text;
-        return null;
+        return LitKind.Custom;
     }
 };

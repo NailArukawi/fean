@@ -1,6 +1,7 @@
 const std = @import("std");
 pub const vm = @import("vm/mod.zig");
 pub const compiler = @import("compiler/mod.zig");
+pub const Ref = vm.Ref;
 
 const Allocator = std.mem.Allocator;
 
@@ -73,7 +74,6 @@ pub const FeanConfig = struct {
 };
 
 // how fean asks for files in case of error
-// it asks for the file by name.
 pub const FileLookup = struct {
     filename: []const u8,
     content: []const u8,
