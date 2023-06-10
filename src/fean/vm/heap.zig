@@ -247,7 +247,7 @@ pub const Heap = struct {
     pointers: Linked(*Ref),
     underlying_allocator: Allocator,
     mark: bool,
-    collecting: bool,
+    collecting: std.atomic.Atomic(bool),
 
     head: *BumpBlock,
     overflow: *BumpBlock,
@@ -259,6 +259,7 @@ pub const Heap = struct {
         var result = try allocator.create(@This());
 
         result.mark = false;
+        result.collecting = std.atomic.Atomic(bool).init(false);
 
         result.head = try BumpBlock.create(allocator);
         result.overflow = try BumpBlock.create(allocator);
@@ -329,8 +330,8 @@ pub const Heap = struct {
     }
 
     pub fn gc(self: *@This()) !void {
-        std.debug.assert(!self.collecting); // can only collect once at a time
-        self.collecting = true;
+        std.debug.assert(!self.collecting.load(.Acquire)); // can only collect once at a time
+        self.collecting.store(true, .Release);
         var thread = try std.Thread.spawn(.{}, @This().__gc, .{self});
         _ = thread;
     }
@@ -362,11 +363,11 @@ pub const Heap = struct {
             }
         }
         self.mark = !self.mark;
-        self.collecting = false;
+        self.collecting.store(false, .Release);
     }
 
     pub fn debug(self: *@This()) void {
-        while (self.collecting) continue;
+        while (self.collecting.load( .Acquire)) continue;
         std.debug.print("[HEAP]\n", .{});
 
         var head_bytes: usize = 0;
