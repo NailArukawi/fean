@@ -351,6 +351,8 @@ pub const Heap = struct {
                         for (i..(i + size)) |to_free| {
                             bump.meta.used[to_free] = false;
                         }
+
+                        self.underlying_allocator.destroy(ref);
                     }
 
                     i += size;
