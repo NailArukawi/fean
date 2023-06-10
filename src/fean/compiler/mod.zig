@@ -20,13 +20,21 @@ pub const SymbolKind = symboltable.SymbolKind;
 const resolver = @import("resolver.zig");
 pub const Resolver = resolver.Resolver;
 
+// Address
+const address = @import("address.zig");
+pub const AddressKind = address.AddressKind;
+pub const AddressExtra = address.Extra;
+pub const Address = address.Address;
+pub const StructAccess = address.StructAccess;
+pub const Load = address.Load;
+pub const Arithmetic = address.Arithmetic;
+pub const Instr = address.Instr;
+
 // Compiler
 pub const compiler = @import("compiler.zig");
 pub const Compiler = compiler.Compiler;
 pub const IR = compiler.IR;
 pub const IRBlock = compiler.IRBlock;
-pub const Instr = compiler.Instr;
-pub const Address = compiler.Address;
 pub const CompilerMeta = compiler.CompilerMeta;
 
 // Assembler

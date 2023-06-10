@@ -203,6 +203,7 @@ pub const Thread = struct {
         }
     }
 
+    // todo check soundness here.
     pub fn gc(self: *@This()) !void {
         const mark = self.heap.mark;
         for (self.obj_map[0..(STACK_SIZE * (self.depth + self.stack_base))], 0..) |is_obj, i|

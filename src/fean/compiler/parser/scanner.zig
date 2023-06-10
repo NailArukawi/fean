@@ -40,6 +40,8 @@ const KW_MAP = [_]KWPair{
     KWPair{ .hash = KWPair.kw_hash("or"), .keyword = Keyword.Or },
     KWPair{ .hash = KWPair.kw_hash("trait"), .keyword = Keyword.Trait },
     KWPair{ .hash = KWPair.kw_hash("struct"), .keyword = Keyword.Struct },
+    KWPair{ .hash = KWPair.kw_hash("Self"), .keyword = Keyword.Self },
+    KWPair{ .hash = KWPair.kw_hash("self"), .keyword = Keyword.self },
     KWPair{ .hash = KWPair.kw_hash("impl"), .keyword = Keyword.Impl },
     KWPair{ .hash = KWPair.kw_hash("if"), .keyword = Keyword.If },
     KWPair{ .hash = KWPair.kw_hash("else"), .keyword = Keyword.Else },

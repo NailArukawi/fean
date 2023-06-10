@@ -243,8 +243,5 @@ pub const StatmentKind = enum {
 };
 
 fn SymbolKind_helper(kind: ?Kind) ?SymbolKind {
-    if (kind == null) {
-        return null;
-    }
-    return SymbolKind{ .resolved = kind.? };
+    return SymbolKind{ .resolved = kind orelse return null };
 }

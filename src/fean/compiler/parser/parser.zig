@@ -371,6 +371,15 @@ pub const Parser = struct {
     inline fn parameter_parse(self: *@This(), write_to: *[]Parameter) void {
         var i: usize = 0;
         while (!self.check(.paren_right)) {
+            if (self.of_kind(.Self)) {
+                if (i != 0)
+                    @panic("Self has to be first parameter");
+                const parameter = Parameter{ .name = "self", .symbol = null, .kind = .{ .unresolved = "Self" } };
+                write_to.*[i] = parameter;
+                i += 1;
+                continue;
+            }
+
             // parameter
             self.check_err(.identifier, "expected an identifier for parameter");
             const name = self.pop().?;
@@ -697,13 +706,13 @@ pub const Parser = struct {
                 const args = self.arguments(scope);
                 self.consume_kind(.paren_right, "Expected call arguments to end with a )");
 
-                const name = result;
+                const callee = result.literal.data.identifier;
 
                 result = self.allocator.create(Node) catch unreachable;
                 result.* = Node{
                     .call = .{
                         // todo mem leak
-                        .name = name.literal.data.identifier,
+                        .name = callee,
                         .symbol = null,
                         .arguments = args,
                     },
@@ -778,6 +787,13 @@ pub const Parser = struct {
         if (self.check(.identifier)) {
             var result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .literal = self.pop().? };
+            return result;
+        }
+
+        if (self.check(.self)) {
+            var result = self.allocator.create(Node) catch unreachable;
+            const popped = self.pop().?;
+            result.* = Node{ .literal = Token.new_identifier("self", popped.span) };
             return result;
         }
 

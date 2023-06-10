@@ -12,6 +12,14 @@ const SymbolTable = mod.SymbolTable;
 const Kind = mod.Kind;
 const KindTable = mod.KindTable;
 
+pub const AddressKind = mod.AddressKind;
+pub const Extra = mod.AddressExtra;
+pub const Address = mod.Address;
+pub const Load = mod.Load;
+pub const Arithmetic = mod.Arithmetic;
+pub const StructAccess = mod.StructAccess;
+pub const Instr = mod.Instr;
+
 const Item = @import("../vm/mod.zig").Item;
 const Methods = @import("../vm/mod.zig").Methods;
 const Function = @import("../vm/mod.zig").Function;
@@ -25,571 +33,6 @@ const FeanConfig = @import("../fean.zig").FeanConfig;
 const List = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const mem = std.mem;
-
-pub const AddressKind = enum(u8) {
-    not_set,
-    register,
-    literal,
-    upvalue,
-    global,
-    temporary,
-    pair,
-    field,
-
-    extra,
-};
-
-pub const Extra = enum(u56) {
-    detach,
-    copy_if_move,
-    set_mode,
-};
-
-pub const Address = struct {
-    inner: usize,
-
-    pub inline fn new_not_set() @This() {
-        return @This(){
-            .inner = @intCast(usize, 0) | (@intCast(usize, @enumToInt(AddressKind.not_set)) << 56),
-        };
-    }
-
-    pub inline fn new_literal(address: u56) @This() {
-        return @This(){
-            .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.literal)) << 56),
-        };
-    }
-
-    pub inline fn new_upvalue(address: u56) @This() {
-        return @This(){
-            .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.upvalue)) << 56),
-        };
-    }
-
-    pub inline fn new_global(symbol: Symbol) @This() {
-        return @This(){
-            .inner = @ptrToInt(symbol) | (@intCast(usize, @enumToInt(AddressKind.upvalue)) << 56),
-        };
-    }
-
-    pub inline fn new_temporary(address: u10) @This() {
-        return @This(){
-            .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.temporary)) << 56),
-        };
-    }
-
-    pub inline fn new_register(address: u10) @This() {
-        return @This(){
-            .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.register)) << 56),
-        };
-    }
-
-    pub inline fn new_pair(id: u56) @This() {
-        return @This(){
-            .inner = @intCast(usize, id) | (@intCast(usize, @enumToInt(AddressKind.pair)) << 56),
-        };
-    }
-    pub inline fn new_field(address: u56) @This() {
-        return @This(){
-            .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.field)) << 56),
-        };
-    }
-
-    pub inline fn new_extra(e: Extra) @This() {
-        return @This(){
-            .inner = @enumToInt(e) | (@intCast(usize, @enumToInt(AddressKind.extra)) << 56),
-        };
-    }
-
-    // unsafe, use carefully
-    pub inline fn new_raw(ptr: usize) @This() {
-        return @This(){
-            .inner = ptr,
-        };
-    }
-
-    pub inline fn upvalue(self: @This()) u56 {
-        return @truncate(u56, self.inner);
-    }
-
-    pub inline fn literal(self: @This()) u56 {
-        return @truncate(u56, self.inner);
-    }
-
-    pub inline fn global(self: @This()) u56 {
-        return @truncate(u56, self.inner);
-    }
-
-    pub inline fn temporary(self: @This()) u10 {
-        return @truncate(u10, self.inner);
-    }
-
-    pub inline fn register(self: @This()) u10 {
-        return @truncate(u10, self.inner);
-    }
-
-    pub inline fn pair(self: @This()) u56 {
-        return @truncate(u56, self.inner);
-    }
-
-    pub inline fn kind(self: @This()) AddressKind {
-        return @intToEnum(AddressKind, @truncate(u8, self.inner >> 56));
-    }
-
-    pub inline fn field(self: @This()) u56 {
-        return @truncate(u56, self.inner);
-    }
-
-    pub inline fn extra(self: @This()) Extra {
-        return @intToEnum(Extra, @truncate(u56, self.inner));
-    }
-
-    pub inline fn raw(self: @This()) usize {
-        return self.inner;
-    }
-
-    pub fn debug(self: @This(), buffer: []u8) ![]const u8 {
-        const adress_kind = self.kind();
-
-        switch (adress_kind) {
-            .not_set => unreachable,
-            .register => {
-                const reg = self.register();
-                return std.fmt.bufPrint(buffer, "reg[{d:4}]", .{reg});
-            },
-            .literal => {
-                const literal_adress = self.literal();
-                return std.fmt.bufPrint(buffer, "consts[{}]", .{literal_adress});
-            },
-            .upvalue => unreachable,
-            .global => unreachable,
-            .temporary => {
-                const reg = self.register();
-                return std.fmt.bufPrint(buffer, "tmp[{d:4}]", .{reg});
-            },
-            .pair => {
-                const pair_value = self.literal();
-                return std.fmt.bufPrint(buffer, "pair[{}]", .{pair_value});
-            },
-            else => unreachable,
-        }
-    }
-};
-
-pub const Load = struct {
-    result: Address,
-    a: Address,
-};
-
-pub const Arithmetic = struct {
-    result: Address,
-    a: Address,
-    b: Address,
-};
-
-pub const StructAccess = struct {
-    reg: Address,
-    this: Address,
-    index: Address,
-};
-
-pub const Instr = union(enum) {
-    // Misc
-    no_op,
-    ret: bool,
-    call: struct {
-        result: Address,
-        arg_start: ?Address,
-        callee: Address,
-        has_return: bool,
-    },
-    call_extern: struct {
-        result: Address,
-        arg_start: ?Address,
-        callee: Address,
-        has_return: bool,
-    },
-    invoke,
-    invoke_extern,
-    make_closure,
-    dive,
-    ascend,
-
-    // Memory
-    load_true: Address,
-    load_false: Address,
-    load_literal: Load,
-    load_literal_obj: Load,
-    load_global: Load,
-    load_global_obj: Load,
-    store_global: Load,
-    get_upvalue: Load,
-    set_upvalue: Load,
-    create_struct: struct {
-        result: Address,
-        kind: Address,
-    },
-    copy: Load,
-    get_struct_field_u64: StructAccess,
-    get_struct_field_u32: StructAccess,
-    get_struct_field_u16: StructAccess,
-    get_struct_field_u8: StructAccess,
-    get_struct_field_i64: StructAccess,
-    get_struct_field_i32: StructAccess,
-    get_struct_field_i16: StructAccess,
-    get_struct_field_i8: StructAccess,
-    get_struct_field_f64: StructAccess,
-    get_struct_field_f32: StructAccess,
-    get_struct_field_obj: StructAccess,
-    set_struct_field_u64: StructAccess,
-    set_struct_field_u32: StructAccess,
-    set_struct_field_u16: StructAccess,
-    set_struct_field_u8: StructAccess,
-    set_struct_field_i64: StructAccess,
-    set_struct_field_i32: StructAccess,
-    set_struct_field_i16: StructAccess,
-    set_struct_field_i8: StructAccess,
-    set_struct_field_f64: StructAccess,
-    set_struct_field_f32: StructAccess,
-    set_struct_field_obj: StructAccess,
-
-    // Arithmetic
-    add_u64: Arithmetic,
-    sub_u64: Arithmetic,
-    mul_u64: Arithmetic,
-    div_u64: Arithmetic,
-    add_u32: Arithmetic,
-    sub_u32: Arithmetic,
-    mul_u32: Arithmetic,
-    div_u32: Arithmetic,
-    add_u16: Arithmetic,
-    sub_u16: Arithmetic,
-    mul_u16: Arithmetic,
-    div_u16: Arithmetic,
-    add_u8: Arithmetic,
-    sub_u8: Arithmetic,
-    mul_u8: Arithmetic,
-    div_u8: Arithmetic,
-
-    add_i64: Arithmetic,
-    sub_i64: Arithmetic,
-    mul_i64: Arithmetic,
-    div_i64: Arithmetic,
-    add_i32: Arithmetic,
-    sub_i32: Arithmetic,
-    mul_i32: Arithmetic,
-    div_i32: Arithmetic,
-    add_i16: Arithmetic,
-    sub_i16: Arithmetic,
-    mul_i16: Arithmetic,
-    div_i16: Arithmetic,
-    add_i8: Arithmetic,
-    sub_i8: Arithmetic,
-    mul_i8: Arithmetic,
-    div_i8: Arithmetic,
-
-    add_f64: Arithmetic,
-    sub_f64: Arithmetic,
-    mul_f64: Arithmetic,
-    div_f64: Arithmetic,
-
-    add_f32: Arithmetic,
-    sub_f32: Arithmetic,
-    mul_f32: Arithmetic,
-    div_f32: Arithmetic,
-
-    inc_i64: Address,
-    inc_u64: Address,
-    inc_i32: Address,
-    inc_u32: Address,
-    inc_i16: Address,
-    inc_u16: Address,
-    inc_i8: Address,
-    inc_u8: Address,
-
-    inc_f64: Address,
-    inc_f32: Address,
-
-    dec_i64: Address,
-    dec_u64: Address,
-    dec_i32: Address,
-    dec_u32: Address,
-    dec_i16: Address,
-    dec_u16: Address,
-    dec_i8: Address,
-    dec_u8: Address,
-
-    dec_f64: Address,
-    dec_f32: Address,
-
-    // conditional
-    // Control flow (21)
-    less_than_u64: Arithmetic,
-    less_than_u32: Arithmetic,
-    less_than_u16: Arithmetic,
-    less_than_u8: Arithmetic,
-    less_than_i64: Arithmetic,
-    less_than_i32: Arithmetic,
-    less_than_i16: Arithmetic,
-    less_than_i8: Arithmetic,
-    less_than_f64: Arithmetic,
-    less_than_f32: Arithmetic,
-
-    less_equal_u64: Arithmetic,
-    less_equal_u32: Arithmetic,
-    less_equal_u16: Arithmetic,
-    less_equal_u8: Arithmetic,
-    less_equal_i64: Arithmetic,
-    less_equal_i32: Arithmetic,
-    less_equal_i16: Arithmetic,
-    less_equal_i8: Arithmetic,
-    less_equal_f64: Arithmetic,
-    less_equal_f32: Arithmetic,
-
-    equal_bit: Arithmetic,
-    equal_f64: Arithmetic,
-    equal_f32: Arithmetic,
-
-    not: struct {
-        source: Address,
-        dest: Address,
-    },
-    if_jmp: struct {
-        condition: Address,
-        offset: Address,
-    },
-    jmp: struct {
-        offset: Address,
-    },
-
-    // meta
-    block: *IRBlock,
-    destination: Address,
-    fn_to_assemble: struct {
-        // callee object
-        result: Address,
-
-        // function objects
-        memory: *Function,
-        lit: Address,
-        // block is an raw adress
-        block: ?Address,
-    },
-    reserve: struct { nr: u10, reg: bool },
-    drop: struct { nr: u10, reg: bool },
-
-    // extended
-    extended,
-
-    pub fn debug(self: @This(), buffer: *[512]u8) !?[]const u8 {
-        switch (self) {
-            .no_op => return "",
-            .ret => return try std.fmt.bufPrint(buffer, "return", .{}),
-            .call => |c| {
-                const fn_pos = c.callee.register();
-                const result = c.result.register();
-                if (c.arg_start == null) {
-                    return try std.fmt.bufPrint(buffer, "call\treg[{}]() -> reg[{}]", .{ fn_pos, result });
-                } else {
-                    return try std.fmt.bufPrint(buffer, "call\treg[{}](start reg:{}) -> reg[{}]", .{ fn_pos, c.arg_start.?.register(), result });
-                }
-            },
-            .call_extern => |ce| {
-                const fn_pos = ce.callee.register();
-                const result = ce.result.register();
-
-                if (ce.arg_start == null) {
-                    return try std.fmt.bufPrint(buffer, "call\textern reg[{}]() -> reg[{}]", .{ fn_pos, result });
-                } else {
-                    return try std.fmt.bufPrint(buffer, "call\textern reg[{}](start reg:{}) -> reg[{}]", .{ fn_pos, ce.arg_start.?.register(), result });
-                }
-            },
-            .invoke => unreachable,
-            .invoke_extern => unreachable,
-            .make_closure => unreachable,
-            .dive => return try std.fmt.bufPrint(buffer, "dive", .{}),
-            .ascend => return try std.fmt.bufPrint(buffer, "ascend", .{}),
-
-            // Memory
-            .load_true => |lt| {
-                const result = lt.register();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = true", .{ @tagName(self), result });
-            },
-            .load_false => |lf| {
-                const result = lf.register();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = true", .{ @tagName(self), result });
-            },
-            .load_literal_obj, .load_literal => |l| {
-                const result = l.result.register();
-                const lit_adress = l.a.literal();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = consts[{}]", .{ @tagName(self), result, lit_adress });
-            },
-            .load_global_obj, .load_global => |g| {
-                const global_name = g.result.register();
-                const result = g.a.literal();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = Global(\"reg[{}]\")", .{ @tagName(self), result, global_name });
-            },
-            .store_global => |g| {
-                const global_name = g.result.register();
-                const value = g.a.literal();
-                return try std.fmt.bufPrint(buffer, "{s}:\tGlobal(\"reg[{}]\") = reg[{}]", .{ @tagName(self), global_name, value });
-            },
-            .get_upvalue => |gu| {
-                const result = gu.result.register();
-                const real = gu.a.literal();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = stack[{}]", .{ @tagName(self), result, real });
-            },
-            .set_upvalue => |gu| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const real = gu.result.register();
-                const source = try gu.a.debug(&nested_buffer);
-                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}] = {s}", .{ @tagName(self), real, source });
-            },
-            .copy => |cp| {
-                const real = cp.result.register();
-                const source = cp.a.literal();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = reg[{}]", .{ @tagName(self), real, source });
-            },
-            .create_struct => |ct| {
-                const result = ct.result.register();
-                const kind = ct.kind.register();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = consts[{}]", .{ @tagName(self), result, kind });
-            },
-            .get_struct_field_u64, .get_struct_field_u32, .get_struct_field_u16, .get_struct_field_u8, .get_struct_field_i64, .get_struct_field_i32, .get_struct_field_i16, .get_struct_field_i8, .get_struct_field_f64, .get_struct_field_f32, .get_struct_field_obj => |get_struct_field| {
-                const reg = get_struct_field.reg.register();
-                const this = get_struct_field.this.register();
-                const index = get_struct_field.index.field();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = reg[{}].{}", .{ @tagName(self), reg, this, index });
-            },
-            .set_struct_field_u64, .set_struct_field_u32, .set_struct_field_u16, .set_struct_field_u8, .set_struct_field_i64, .set_struct_field_i32, .set_struct_field_i16, .set_struct_field_i8, .set_struct_field_f64, .set_struct_field_f32, .set_struct_field_obj => |set_struct_field| {
-                const reg = set_struct_field.reg.register();
-                const this = set_struct_field.this.register();
-                const index = set_struct_field.index.field();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}].{} = reg[{}]", .{ @tagName(self), this, index, reg });
-            },
-
-            // meta
-            .block => |b| {
-                var i: usize = 0;
-                for (b.body.as_slice()) |ir| {
-                    const ir_text = try ir.debug(buffer);
-                    const is_drop_or_reserve: bool = (ir_text.?.len > 4 and std.mem.eql(u8, "drop:", ir_text.?[0..5])) or (ir_text.?.len > 7 and std.mem.eql(u8, "reserve:", ir_text.?[0..8]));
-                    if (is_drop_or_reserve) {
-                        std.debug.print("-----:\t<{s}>\n", .{ir_text.?});
-                    } else {
-                        std.debug.print("   [{}]:\t({s})\n", .{ i, ir_text.? });
-                        i += 1;
-                    }
-                }
-                return "Block end";
-            },
-
-            // extended
-            .extended => unreachable,
-
-            .add_u64, .sub_u64, .mul_u64, .div_u64, .add_u32, .sub_u32, .mul_u32, .div_u32, .add_u16, .sub_u16, .mul_u16, .div_u16, .add_u8, .sub_u8, .mul_u8, .div_u8, .add_i64, .sub_i64, .mul_i64, .div_i64, .add_i32, .sub_i32, .mul_i32, .div_i32, .add_i16, .sub_i16, .mul_i16, .div_i16, .add_i8, .sub_i8, .mul_i8, .div_i8, .add_f64, .sub_f64, .mul_f64, .div_f64, .add_f32, .sub_f32, .mul_f32, .div_f32 => |a| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const result = try a.result.debug(&nested_buffer);
-                const adress_a_offset = result.len;
-                const adress_a = try a.a.debug(nested_buffer[adress_a_offset..nested_size]);
-                const adress_b_offset = result.len + adress_a.len;
-                const adress_b = try a.b.debug(nested_buffer[adress_b_offset..nested_size]);
-
-                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = {s}, {s}", .{ @tagName(self), result, adress_a, adress_b });
-            },
-
-            .inc_i64, .inc_u64, .inc_i32, .inc_u32, .inc_i16, .inc_u16, .inc_i8, .inc_u8, .inc_f64, .inc_f32 => |to_inc| {
-                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}]++", .{ @tagName(self), to_inc.upvalue() });
-            },
-
-            .dec_i64, .dec_u64, .dec_i32, .dec_u32, .dec_i16, .dec_u16, .dec_i8, .dec_u8, .dec_f64, .dec_f32 => |to_dec| {
-                return try std.fmt.bufPrint(buffer, "{s}:\tstack[{}]--", .{ @tagName(self), to_dec.upvalue() });
-            },
-
-            // Control flow (21)
-            .less_than_u64, .less_than_u32, .less_than_u16, .less_than_u8, .less_than_i64, .less_than_i32, .less_than_i16, .less_than_i8, .less_than_f64, .less_than_f32 => |lt| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const result = try lt.result.debug(&nested_buffer);
-                const adress_a_offset = result.len;
-                const adress_a = try lt.a.debug(nested_buffer[adress_a_offset..nested_size]);
-                const adress_b_offset = result.len + adress_a.len;
-                const adress_b = try lt.b.debug(nested_buffer[adress_b_offset..nested_size]);
-
-                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
-            },
-
-            .less_equal_u64, .less_equal_u32, .less_equal_u16, .less_equal_u8, .less_equal_i64, .less_equal_i32, .less_equal_i16, .less_equal_i8, .less_equal_f64, .less_equal_f32 => |le| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const result = try le.result.debug(&nested_buffer);
-                const adress_a_offset = result.len;
-                const adress_a = try le.a.debug(nested_buffer[adress_a_offset..nested_size]);
-                const adress_b_offset = result.len + adress_a.len;
-                const adress_b = try le.b.debug(nested_buffer[adress_b_offset..nested_size]);
-
-                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = {s} < {s}", .{ @tagName(self), result, adress_a, adress_b });
-            },
-
-            .not => |n| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const dest = try n.dest.debug(&nested_buffer);
-                const source_offset = dest.len;
-                const source = try n.source.debug(nested_buffer[source_offset..nested_size]);
-                return try std.fmt.bufPrint(buffer, "{s}:\t{s} = !{s}", .{ @tagName(self), dest, source });
-            },
-
-            .if_jmp => |ij| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const condition = try ij.condition.debug(&nested_buffer);
-                const offset_offset = condition.len;
-                const offset = try ij.offset.debug(nested_buffer[offset_offset..nested_size]);
-                return try std.fmt.bufPrint(buffer, "{s}:\tif({s}) jump to {s}", .{ @tagName(self), condition, offset });
-            },
-
-            .jmp => |j| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const offset = try j.offset.debug(&nested_buffer);
-                return try std.fmt.bufPrint(buffer, "{s}:\tjump to {s}", .{ @tagName(self), offset });
-            },
-
-            .destination => |a| {
-                const nested_size: usize = 32;
-                var nested_buffer: [nested_size]u8 = [_]u8{0} ** nested_size;
-
-                const dest = try a.debug(&nested_buffer);
-
-                return try std.fmt.bufPrint(buffer, "{s}:\t{s}", .{ @tagName(self), dest });
-            },
-            .fn_to_assemble => return null,
-            .reserve => |r| {
-                if (r.reg)
-                    return try std.fmt.bufPrint(buffer, "{s}:\t reg[{}]", .{ @tagName(self), r.nr });
-                return try std.fmt.bufPrint(buffer, "{s}:\t temp[{}]", .{ @tagName(self), r.nr });
-            },
-            .drop => |d| {
-                if (d.reg)
-                    return try std.fmt.bufPrint(buffer, "{s}:\t reg[{}]", .{ @tagName(self), d.nr });
-                return try std.fmt.bufPrint(buffer, "{s}:\t temp[{}]", .{ @tagName(self), d.nr });
-            },
-            else => {
-                return try std.fmt.bufPrint(buffer, "{s}:\tUNKNOWN", .{@tagName(self)});
-            },
-        }
-    }
-};
 
 pub const IRBlock = struct {
     parent: Scope,
@@ -623,9 +66,9 @@ pub const IRBlock = struct {
     }
 
     pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?Symbol {
-        if (self.symbols == null) {
+        if (self.symbols == null)
             return self.parent.lookup_symbol(identifier);
-        }
+
         return self.symbols.?.lookup(identifier) orelse self.parent.lookup_symbol(identifier);
     }
 
@@ -634,47 +77,44 @@ pub const IRBlock = struct {
             self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
             return self.symbols.?;
         }
+
         return self.symbols.?.install(allocator, name, kind, size);
     }
 
     pub fn lookup_kind(self: *@This(), identifier: []const u8) ?Kind {
-        if (self.kinds == null) {
+        if (self.kinds == null)
             return self.parent.lookup_kind(identifier);
-        }
+
         return self.kinds.?.lookup(identifier);
     }
 
     pub fn get_temp(self: *@This()) ?Address {
         const used_registers = self.registers + self.temporaries;
-        if ((used_registers + 1) > 1023) {
-            // we out of registers
-            return null;
-        } else {
-            const temp = 1023 - self.temporaries;
-            self.temporaries += 1;
+        if ((used_registers + 1) > 1023)
+            return null; // we out of registers
 
-            if (self.optimize)
-                self.body.push(.{ .reserve = .{ .nr = temp, .reg = false } }) catch unreachable;
+        const temp = 1023 - self.temporaries;
+        self.temporaries += 1;
 
-            // return can't be a temp register
-            std.debug.assert(temp != 0);
-            return Address.new_temporary(temp);
-        }
+        if (self.optimize)
+            self.body.push(.{ .reserve = .{ .nr = temp, .reg = false } }) catch unreachable;
+
+        // return can't be a temp register
+        std.debug.assert(temp != 0);
+        return Address.new_temporary(temp);
     }
 
     pub fn get_reg(self: *@This()) ?Address {
         const used_registers = self.registers + self.temporaries;
-        if ((used_registers + 1) > 1023) {
-            // we out of registers
-            return null;
-        } else {
-            self.registers += 1;
+        if ((used_registers + 1) > 1023)
+            return null; // we out of registers
 
-            if (self.optimize)
-                self.body.push(.{ .reserve = .{ .nr = self.registers, .reg = true } }) catch unreachable;
+        self.registers += 1;
 
-            return Address.new_register(self.registers);
-        }
+        if (self.optimize)
+            self.body.push(.{ .reserve = .{ .nr = self.registers, .reg = true } }) catch unreachable;
+
+        return Address.new_register(self.registers);
     }
 
     pub fn drop_temp(self: *@This()) void {
@@ -746,26 +186,21 @@ pub const IR = struct {
     pub fn lookup_global(self: *@This(), identifier: []const u8) ?Global {
         for (self.globals.as_slice()) |g| {
             const found = mem.eql(u8, g.symbol.name, identifier);
-            if (found) {
+            if (found)
                 return g;
-            }
         }
 
         return null;
     }
 
     pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?Symbol {
-        if (self.symbols == null) {
+        if (self.symbols == null)
             return null;
-        }
+
         return self.symbols.?.lookup(identifier);
     }
 
     pub fn install_symbol(self: *@This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !Symbol {
-        if (self.symbols == null) {
-            self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
-            return self.symbols.?;
-        }
         return self.symbols.?.install(allocator, name, kind, size);
     }
 
@@ -775,35 +210,31 @@ pub const IR = struct {
 
     pub fn get_temp(self: *@This()) ?Address {
         const used_registers = self.registers + self.temporaries;
-        if ((used_registers + 1) > 1023) {
-            // we out of registers
-            return null;
-        } else {
-            const temp = 1023 - self.temporaries;
-            self.temporaries += 1;
+        if ((used_registers + 1) > 1023)
+            return null; // we out of registers
 
-            if (self.optimize)
-                self.body.push(.{ .reserve = .{ .nr = temp, .reg = false } }) catch unreachable;
+        const temp = 1023 - self.temporaries;
+        self.temporaries += 1;
 
-            // return can't be a temp register
-            std.debug.assert(temp != 0);
-            return Address.new_temporary(temp);
-        }
+        if (self.optimize)
+            self.body.push(.{ .reserve = .{ .nr = temp, .reg = false } }) catch unreachable;
+
+        // return can't be a temp register
+        std.debug.assert(temp != 0);
+        return Address.new_temporary(temp);
     }
 
     pub fn get_reg(self: *@This()) ?Address {
         const used_registers = self.registers + self.temporaries;
-        if ((used_registers + 1) > 1023) {
-            // we out of registers
-            return null;
-        } else {
-            self.registers += 1;
+        if ((used_registers + 1) > 1023)
+            return null; // we out of registers
 
-            if (self.optimize)
-                self.body.push(.{ .reserve = .{ .nr = self.registers, .reg = true } }) catch unreachable;
+        self.registers += 1;
 
-            return Address.new_register(self.registers);
-        }
+        if (self.optimize)
+            self.body.push(.{ .reserve = .{ .nr = self.registers, .reg = true } }) catch unreachable;
+
+        return Address.new_register(self.registers);
     }
 
     pub fn drop_temp(self: *@This()) void {
@@ -916,15 +347,15 @@ pub const IR = struct {
         std.debug.print("\n[Program]:\n", .{});
         var i: usize = 0;
         for (self.body.as_slice()) |ir| {
-            const ir_text = try ir.debug(buffer);
-            if (ir_text != null) {
-                const is_drop_or_reserve: bool = (ir_text.?.len > 4 and std.mem.eql(u8, "drop:", ir_text.?[0..5])) or (ir_text.?.len > 7 and std.mem.eql(u8, "reserve:", ir_text.?[0..8]));
-                if (is_drop_or_reserve) {
-                    std.debug.print("--:\t<{s}>\n", .{ir_text.?});
-                } else {
-                    std.debug.print("[{}]:\t({s})\n", .{ i, ir_text.? });
+            const ir_text = try ir.debug(buffer) orelse continue;
+            const is_drop_or_reserve: bool = slice_start_eql(u8, 5, ir_text, "drop:") or slice_start_eql(u8, 7, ir_text, "reserve:");
+
+            switch (is_drop_or_reserve) {
+                true => std.debug.print("--:\t<{s}>\n", .{ir_text}),
+                false => {
+                    std.debug.print("[{}]:\t({s})\n", .{ i, ir_text });
                     i += 1;
-                }
+                },
             }
         }
     }
@@ -993,9 +424,8 @@ pub const Scope = union(enum) {
                 var count: u8 = 0;
                 var cursor = b.symbols;
                 while (cursor != null) {
-                    if (cursor.?.param) {
+                    if (cursor.?.param)
                         count += 1;
-                    }
 
                     cursor = cursor.?.next;
                 }
@@ -1022,9 +452,7 @@ pub const Scope = union(enum) {
     pub fn lookup_global(self: @This(), identifier: []const u8) ?Global {
         switch (self) {
             .head => |head| return head.lookup_global(identifier),
-            .block => |block| {
-                return block.parent.lookup_global(identifier);
-            },
+            .block => |block| return block.parent.lookup_global(identifier),
         }
     }
 
@@ -1124,6 +552,7 @@ pub const Compiler = struct {
     objects: *Stack(*Object),
     depth: usize = 0,
     dest: u56 = 0,
+    optimize: bool = false,
     in_function: bool = false,
     function_head_depth: u56 = 0,
 
@@ -1136,6 +565,7 @@ pub const Compiler = struct {
             .allocator = config.allocator,
             .config = config,
             // todo share it with vm
+            // maybe make static or const blocks
             .heap = try heap.Heap.create(config.allocator),
             .literals = &meta.literals,
             .literal_count = &meta.literal_count,
@@ -1171,12 +601,12 @@ pub const Compiler = struct {
         var head = try Scope.create_head(self.allocator, meta);
         head.head.symbols = ast.symbols;
         head.head.kinds = ast.kinds.?;
+        head.head.optimize = self.optimize;
 
         var head_body = ast.head;
 
-        for (head_body) |n| {
+        for (head_body) |n|
             _ = try self.generate(n, head, null, null);
-        }
 
         return head.head;
     }
@@ -1194,19 +624,18 @@ pub const Compiler = struct {
 
                 // todo maybe allow scoped typing
                 var block = try Scope.create_block(self.allocator, scope, s.symbols, s.kinds);
+                block.block.optimize = self.optimize;
 
-                if (self.in_function) {
+                if (self.in_function)
                     block.set_reg_count(block.param_count());
-                }
 
                 if (to_inline) {
                     block.block.inlining = true;
                     block.block.registers = scope.reg_count();
                     block.block.temporaries = scope.temp_count();
-                } else if (!detatch) {
-                    try self.dive(scope);
-                } else {
-                    self.depth = 0;
+                } else switch (!detatch) {
+                    true => try self.dive(scope),
+                    false => self.depth = 0,
                 }
 
                 defer {
@@ -1218,14 +647,12 @@ pub const Compiler = struct {
                     }
                 }
 
-                for (s.statments.?) |stmnt| {
+                for (s.statments.?) |stmnt|
                     _ = try self.generate(stmnt, block, null, null);
-                }
 
-                if (detatch) {
-                    return Address.new_raw(@ptrToInt(block.block));
-                } else {
-                    try scope.push_instr(Instr{ .block = block.block });
+                switch (detatch) {
+                    true => return Address.new_raw(@ptrToInt(block.block)),
+                    false => try scope.push_instr(Instr{ .block = block.block }),
                 }
             },
             .impl => {
@@ -1255,17 +682,15 @@ pub const Compiler = struct {
                 return null;
             },
             .variable => {
-                if (scope.is_head()) {
-                    _ = try self.generate_global_variable(node, scope);
-                } else {
-                    _ = try self.generate_local_variable(node, scope);
+                switch (scope.is_head()) {
+                    true => try self.generate_global_variable(node, scope),
+                    false => try self.generate_local_variable(node, scope),
                 }
             },
             .constant => {
-                if (scope.is_head()) {
-                    _ = try self.generate_global_constant(node, scope);
-                } else {
-                    _ = try self.generate_local_constant(node, scope);
+                switch (scope.is_head()) {
+                    true => try self.generate_global_constant(node, scope),
+                    false => try self.generate_local_constant(node, scope),
                 }
             },
             .assignment => try self.generate_assignment(node, scope),
@@ -1288,11 +713,7 @@ pub const Compiler = struct {
 
                             var gen_result = try self.generate(s.value.?, scope, address, null);
 
-                            defer {
-                                if (!address_moved) {
-                                    scope.drop_temp();
-                                }
-                            }
+                            defer if (!address_moved) scope.drop_temp();
 
                             if (gen_result != null) {
                                 address_moved = true;
@@ -1326,11 +747,7 @@ pub const Compiler = struct {
 
                                 var gen_result = try self.generate(s.value.?, scope, address, null);
 
-                                defer {
-                                    if (!address_moved) {
-                                        scope.drop_temp();
-                                    }
-                                }
+                                defer if (!address_moved) scope.drop_temp();
 
                                 if (gen_result != null) {
                                     address_moved = true;
@@ -1349,10 +766,9 @@ pub const Compiler = struct {
                 }
             },
             .function => |func| {
-                if (func.is_extern) {
-                    try self.generate_extern_function(node, scope, result.?);
-                } else {
-                    try self.generate_internal_function(node, scope, result.?);
+                switch (func.is_extern) {
+                    true => try self.generate_extern_function(node, scope, result.?),
+                    false => try self.generate_internal_function(node, scope, result.?),
                 }
             },
             .conditional_if => try self.generate_conditional_if(node, scope),
@@ -1376,11 +792,7 @@ pub const Compiler = struct {
 
                     var gen_result = try self.generate(ue.value, scope, tmp, null);
 
-                    defer {
-                        if (!tmp_moved) {
-                            scope.drop_temp();
-                        }
-                    }
+                    defer if (!tmp_moved) scope.drop_temp();
 
                     if (gen_result != null) {
                         tmp_moved = true;
@@ -1691,11 +1103,7 @@ pub const Compiler = struct {
         var tmp = scope.get_temp().?;
         var tmp_moved = false;
         var gen_result = try self.generate(constant.value, scope, tmp, null);
-        defer {
-            if (!tmp_moved) {
-                scope.drop_temp();
-            }
-        }
+        defer if (!tmp_moved) scope.drop_temp();
 
         if (gen_result != null) {
             tmp_moved = true;
@@ -1727,9 +1135,8 @@ pub const Compiler = struct {
         symbol.binding = register.register();
         symbol.depth = self.depth;
 
-        if (variable.value != null) {
+        if (variable.value != null)
             _ = try self.generate(variable.value.?, scope, register, null);
-        }
     }
 
     fn generate_head_constant(self: *@This(), node: *Node, head: *IR) !void {
@@ -1830,11 +1237,7 @@ pub const Compiler = struct {
                 var local = scope.get_temp().?;
                 var local_moved = false;
                 var gen_result = try self.generate(assignment.value, scope, local, null);
-                defer {
-                    if (!local_moved) {
-                        scope.drop_temp();
-                    }
-                }
+                defer if (!local_moved) scope.drop_temp();
 
                 if (gen_result != null) {
                     local_moved = true;
@@ -1861,11 +1264,7 @@ pub const Compiler = struct {
         var condition = scope.get_temp().?;
         var condition_moved = false;
         var gen_result = try self.generate(conditional.condition, scope, condition, null);
-        defer {
-            if (!condition_moved) {
-                scope.drop_temp();
-            }
-        }
+        defer if (!condition_moved) scope.drop_temp();
 
         if (gen_result != null) {
             condition_moved = true;
@@ -1951,11 +1350,7 @@ pub const Compiler = struct {
         var lhs = scope.get_temp().?;
         var lhs_moved = false;
         var gen_result = try self.generate(exp.lhs, scope, lhs, null);
-        defer {
-            if (!lhs_moved) {
-                scope.drop_temp();
-            }
-        }
+        defer if (!lhs_moved) scope.drop_temp();
 
         if (gen_result != null) {
             lhs_moved = true;
@@ -1966,11 +1361,7 @@ pub const Compiler = struct {
         var rhs = scope.get_temp().?;
         var rhs_moved = false;
         gen_result = try self.generate(exp.rhs, scope, rhs, null);
-        defer {
-            if (!rhs_moved) {
-                scope.drop_temp();
-            }
-        }
+        defer if (!rhs_moved) scope.drop_temp();
 
         if (gen_result != null) {
             rhs_moved = true;
@@ -2150,9 +1541,9 @@ pub const Compiler = struct {
             fn_head = true;
             self.in_function = true;
         }
-        defer {
-            if (fn_head) self.in_function = false;
-        }
+        defer if (fn_head) {
+            self.in_function = false;
+        };
 
         body.*.internal.arity = @intCast(u8, function.params.len);
         body.*.internal.result = (function.result != null);
@@ -2174,8 +1565,7 @@ pub const Compiler = struct {
         } });
     }
 
-    fn generate_call(self: *@This(), node: *Node, scope: Scope, result: Address, extra: ?Address) !void {
-        _ = extra;
+    fn generate_call(self: *@This(), node: *Node, scope: Scope, result: Address, _: ?Address) !void {
         const call = node.call;
         const fn_identity = scope.lookup_symbol(call.name).?;
 
@@ -2201,9 +1591,7 @@ pub const Compiler = struct {
                 .result = function_register,
                 .a = global_name,
             } });
-        } else {
-            unreachable;
-        }
+        } else unreachable;
 
         var arg_start: ?Address = null;
         const copy_if_move = Address.new_extra(.copy_if_move);
@@ -2344,20 +1732,14 @@ pub const Compiler = struct {
                                 .a = Address.new_register(symbol.?.binding),
                             } });
                             return null;
-                        } else {
-                            return Address.new_register(symbol.?.binding);
-                        }
+                        } else return Address.new_register(symbol.?.binding);
                     }
                 }
             },
             .keyword => |kw| {
                 switch (kw) {
-                    .True => {
-                        try scope.push_instr(.{ .load_true = result });
-                    },
-                    .False => {
-                        try scope.push_instr(.{ .load_false = result });
-                    },
+                    .True => try scope.push_instr(.{ .load_true = result }),
+                    .False => try scope.push_instr(.{ .load_false = result }),
                     else => unreachable,
                 }
             },
@@ -2406,6 +1788,7 @@ pub const Compiler = struct {
                     moved = try self.generate(field.value.?, scope, tmp, null);
                     if (moved != null)
                         @panic("Moving here is not handled");
+
                     field_copy = .{ .set_struct_field_obj = payload };
                 },
             }
@@ -2415,9 +1798,8 @@ pub const Compiler = struct {
 
     fn lookup_literal(self: *@This(), literal: Item, kind: LitKind) ?Address {
         for (self.literals_typing.as_slice(), 0..) |lk, i| {
-            if (lk != kind) {
+            if (lk != kind)
                 continue;
-            }
 
             const found = self.literals.get(i);
             switch (lk) {
@@ -2436,9 +1818,8 @@ pub const Compiler = struct {
         // folding consts to remove dupes
         if (self.config.compile_flags.literal_const_folding) {
             for (self.literals_typing.as_slice(), 0..) |lk, i| {
-                if (lk != kind) {
+                if (lk != kind)
                     continue;
-                }
 
                 var same: bool = false;
                 const found = self.literals.get(i);
@@ -2459,12 +1840,15 @@ pub const Compiler = struct {
                         same = literal.resolve_object().text().eq(found_text);
                     },
                     .ExternFn => {
+                        // Todo ?
                         same = false;
                     },
                     .Kind => {
+                        // Todo ?
                         same = false;
                     },
                     .InternalFn => {
+                        // Todo ?
                         same = false;
                     },
 
@@ -2545,3 +1929,10 @@ const LitKind = enum {
         return LitKind.Custom;
     }
 };
+
+inline fn slice_start_eql(comptime T: type, denominating_len: usize, a: []const u8, b: []const u8) bool {
+    if (a.len < denominating_len or b.len < denominating_len)
+        return false;
+
+    return std.mem.eql(T, a[0..denominating_len], b[0..denominating_len]);
+}
