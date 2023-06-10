@@ -1,11 +1,26 @@
 print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
+heap_collect : ExternFn : extern fn() -> void;
+heap_debug : ExternFn : extern fn() -> void;
 
-struct Point {
+struct Thing {
     x: i64,
-    y: i64,
-    z: i64
+    y: i64
 }
 
-zamn : Point = Point { .x = 1, .y = 2, .z = 3};
+// this should not be collected leaving us some bytes in rest blocks.
+z : Thing = Thing { .x = 0, .y = 1 };
+zz : Thing = Thing { .x = 0, .y = 1 };
+zzz : Thing = Thing { .x = 0, .y = 1 };
 
-print_i64(zamn.y);
+i : i64 = 0;
+while (i < 32){
+    // this should be collected.
+    ree : Thing = Thing { .x = 0, .y = 1 };
+    
+    print_i64(i);
+    i++;
+}
+
+heap_debug();
+heap_collect();
+heap_debug();

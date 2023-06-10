@@ -57,6 +57,7 @@ pub const Chunk = struct {
                 .get_upvalue => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = stack[{}])\n", .{ i, @tagName(op.op), op.a(), op.y() }),
                 .set_upvalue => std.debug.print("[{}]:\t[{s}]\t(stack[{}] = reg[{}])\n", .{ i, @tagName(op.op), op.y(), op.a() }),
                 .copy => std.debug.print("[{}]:\t[{s}]\t\t(reg[{}] = reg[{}])\n", .{ i, @tagName(op.op), op.a(), op.b() }),
+                .set_struct_field_i64 => std.debug.print("[{}]:\t[{s}]\t\treg[{}].{} = reg[{}]\n", .{ i, @tagName(op.op), op.b(), op.z(), op.a() }),
 
                 // Arithmetic (40)
                 .add_u64, .sub_u64, .mul_u64, .div_u64, .add_u32, .sub_u32, .mul_u32, .div_u32, .add_u16, .sub_u16, .mul_u16, .div_u16, .add_u8, .sub_u8, .mul_u8, .div_u8, .add_i64, .sub_i64, .mul_i64, .div_i64, .add_i32, .sub_i32, .mul_i32, .div_i32, .add_i16, .sub_i16, .mul_i16, .div_i16, .add_i8, .sub_i8, .mul_i8, .div_i8, .add_f64, .sub_f64, .mul_f64, .div_f64, .add_f32, .sub_f32, .mul_f32, .div_f32 => std.debug.print("[{}]:\t[{s}]\t(reg[{}] = reg[{}], reg[{}])\n", .{ i, @tagName(op.op), op.a(), op.b(), op.c() }),
@@ -79,7 +80,7 @@ pub const Chunk = struct {
                 .if_jmp => std.debug.print("[{}]:\t[{s}]\t(if(reg[{}]) ip += {})])\n", .{ i, @tagName(op.op), op.a(), @bitCast(i22, op.y()) }),
                 .jmp => std.debug.print("[{}]:\t[{s}]\t\t(ip += {})])\n", .{ i, @tagName(op.op), @bitCast(i32, op.x()) }),
 
-                else => std.debug.print("[{}]:\t[{s}]\tunknown", .{ i, @tagName(op.op) }),
+                else => std.debug.print("[{}]:\t[{s}]\tunknown\n", .{ i, @tagName(op.op) }),
             }
         }
     }

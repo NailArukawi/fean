@@ -115,8 +115,10 @@ pub const Parser = struct {
         if (self.check(.Struct) and self.check_next(.identifier)) {
             _ = self.pop().?;
             return self.declaration_struct(scope);
-        }
-        if (self.check(.identifier) // X
+        } else if (self.check(.Impl) and self.check_next(.identifier) and !self.check_next(.For)) {
+            _ = self.pop().?;
+            return self.declaration_impl(scope);
+        } else if (self.check(.identifier) // X
         and self.check_next(.colon) // :
         and self.check_ahead(.identifier, 2) // num
         ) {
@@ -128,6 +130,21 @@ pub const Parser = struct {
             return self.declaration_variable(scope, true);
         }
         return self.statment(scope);
+    }
+
+    fn declaration_impl(self: *@This(), scope: *Node) *Node {
+        const struct_name = self.pop().?;
+        self.consume_kind(.curley_left, "struct is missing { to start struct body");
+        const body = self.statment_block(scope);
+
+        var result = self.allocator.create(Node) catch unreachable;
+
+        result.* = Node{ .impl = .{
+            .this = SymbolKind{ .unresolved = struct_name.data.identifier },
+            .body = body,
+        } };
+
+        return result;
     }
 
     fn declaration_struct(self: *@This(), scope: *Node) *Node {
@@ -493,7 +510,7 @@ pub const Parser = struct {
 
         const result = self.equality(scope);
 
-        if (result.* == .get and self.of_kind(.equal)) { // *.X =
+        if (result.* == .get and self.check(.equal)) { // *.X =
             return self.expression_set(scope, result);
         }
 

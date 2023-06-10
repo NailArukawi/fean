@@ -23,6 +23,7 @@ pub const Fean = struct {
         //debugging
         var buffer: [512]u8 = [_]u8{0} ** 512;
         try ir.debug(&buffer, compiler_meta);
+        //std.debug.print("\n[main.chunk.debug]\n", .{});
         //main.chunk.debug(false);
 
         var fean = @This(){
@@ -52,7 +53,7 @@ pub const FeanConfig = struct {
     file_debug: bool = false,
     file_lookup: ?*const fn (compiler.parser.Span) FileLookup = null,
 
-    fn_lookup: ?*const fn (name: []const u8) ?*const fn (args: []vm.Item, result: ?*vm.Item) void,
+    fn_lookup: ?*const fn (name: []const u8) ?*const fn (vm: *vm.Thread, args: []vm.Item, result: ?*vm.Item) void,
 
     file_id_count: u32 = 1,
     compile_flags: FeanCompileFlags,

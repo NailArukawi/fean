@@ -7,6 +7,7 @@ const Ref = @import("../mod.zig").Ref;
 const Object = @import("../mod.zig").Object;
 
 const Item = @import("item.zig").Item;
+const Methods = @import("function.zig").Methods;
 
 pub const DEBUG = std.debug.runtime_safety;
 
@@ -19,9 +20,9 @@ pub const Text = struct {
     len: usize,
 
     pub fn create(heap: *Heap, byte_size: usize) !*Ref {
-        var result = try heap.alloc_object(@sizeOf(@This()));
+        var result = try heap.alloc(@sizeOf(@This()) + @sizeOf(?*Methods));
 
-        result.object().* = @This(){
+        result.object().body(@This()).* = @This(){
             .feanptr = result,
             .string = try heap.alloc(@sizeOf(u8) * byte_size),
             .capacity = byte_size,
@@ -32,17 +33,13 @@ pub const Text = struct {
     }
 
     pub fn create_const(allocator: Allocator, len: usize, string: *Ref) !*Ref {
-        var object = try allocator.create(Object);
-        var object_ptr = try Ref.create(allocator, @ptrToInt(object));
+        var allocation = try allocator.alloc(u8, @sizeOf(@This()) + @sizeOf(?*Methods));
+        var object = @ptrToInt(&allocation[0]);
+        var object_ptr = try Ref.create(allocator, object);
 
-        var result = try allocator.create(@This());
-        var ptr = try Ref.create(allocator, @ptrToInt(result));
-
-        object.body = ptr;
-
-        result.string = string;
-        result.capacity = len;
-        result.len = len;
+        object_ptr.object().body(@This()).string = string;
+        object_ptr.object().body(@This()).capacity = len;
+        object_ptr.object().body(@This()).len = len;
 
         return object_ptr;
     }

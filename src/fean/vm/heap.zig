@@ -6,7 +6,7 @@ const Linked = std.SinglyLinkedList;
 
 const Object = @import("./value/object.zig").Object;
 
-pub const BLOCK_DEFAULT_SIZE: usize = std.math.powi(usize, 2, 15) catch unreachable;
+pub const BLOCK_DEFAULT_SIZE: usize = std.math.powi(usize, 2, 14) catch unreachable;
 
 pub const LINE_SIZE: usize = std.math.powi(usize, 2, 6) catch unreachable;
 pub const LINE_COUNT: usize = BLOCK_DEFAULT_SIZE / LINE_SIZE;
@@ -22,99 +22,75 @@ pub const SizeRange = struct {
 };
 pub const SMALL = SizeRange{ .start = 0, .end = LINE_SIZE };
 pub const MEDIUM = SizeRange{ .start = LINE_SIZE + 1, .end = BLOCK_DEFAULT_SIZE / 4 };
-pub const LARGE = SizeRange{ .start = (BLOCK_DEFAULT_SIZE / 4) + 1, .end = ((std.math.powi(usize, 2, 63) catch unreachable) - 1) * 2 };
+pub const LARGE = SizeRange{ .start = (BLOCK_DEFAULT_SIZE / 4) + 1, .end = std.math.maxInt(usize) };
 
 pub const Ref = struct {
     // ptr adress value
     ptr: usize,
 
-    // How many heap lines precedes the object
-    offset: u16,
-
-    // How many heap lines the object spans
-    heap_size: u16,
-
-    // flags,
-    // [0,      1,      2,     3,               4, 5, 6, 7]
-    // [Marked, Pinned, Large, Destruct_Method, 0, 0, 0, 0]
-    flag: u8,
-
-    pub fn create(allocator: Allocator, ptr: usize) !*@This() {
+    pub inline fn create(allocator: Allocator, ptr: usize) !*@This() {
         var result = try allocator.create(@This());
 
         result.ptr = ptr;
-        result.flag = 0;
-        result.heap_size = 0;
+        result.set_pinned(false);
+        result.set_large(false);
 
         return result;
     }
 
-    pub fn destroy(allocator: Allocator, self: *@This()) void {
+    pub inline fn destroy(allocator: Allocator, self: @This()) void {
         allocator.free(self);
     }
 
-    pub inline fn object(self: *@This()) *Object {
+    pub inline fn object(self: @This()) *Object {
         return self.resolve(*Object);
     }
 
-    pub inline fn resolve_array(self: *@This(), comptime T: type) [*]T {
-        return @intToPtr([*]T, self.ptr);
+    pub inline fn resolve_array(self: @This(), comptime T: type) [*]T {
+        return @intToPtr([*]T, self.ptr & 0xFFFFFFFFFFFFFFF8);
     }
 
-    pub inline fn resolve(self: *@This(), comptime T: type) T {
-        const result = @intToPtr(T, self.ptr);
+    pub inline fn resolve(self: @This(), comptime T: type) T {
+        const result = @intToPtr(T, self.ptr & 0xFFFFFFFFFFFFFFF8);
         return result;
     }
 
     // Mark and sweep
-    pub inline fn get_mark(self: @This()) bool {
-        return (self.bits & 0b0000_0001) > 0;
+    pub inline fn get_mark(self: *@This()) bool {
+        return (@ptrCast([*]u8, &self.ptr)[0] & 0b0000_0001) > 0;
     }
 
     pub inline fn set_mark(self: *@This(), val: bool) void {
         if (val) {
-            self.flag |= 0b0000_0001;
+            @ptrCast([*]u8, &self.ptr)[0] |= 0b0000_0001;
         } else {
-            self.flag &= 0b1111_1110;
+            @ptrCast([*]u8, &self.ptr)[0] &= 0b1111_1110;
         }
     }
 
     // Pinned in memory
-    pub inline fn get_pin(self: @This()) bool {
-        return (self.flag & 0b0000_0010) > 0;
+    pub inline fn get_pinned(self: *@This()) bool {
+        return (@ptrCast(*u8, &self.ptr)[0] & 0b0000_0010) > 0;
     }
 
-    pub inline fn set_pin(self: *@This(), val: bool) void {
+    pub inline fn set_pinned(self: *@This(), val: bool) void {
         if (val) {
-            self.flag |= 0b0000_0010;
+            @ptrCast([*]u8, &self.ptr)[0] |= 0b0000_0010;
         } else {
-            self.flag &= 0b1111_1101;
+            @ptrCast([*]u8, &self.ptr)[0] &= 0b1111_1101;
         }
     }
 
     // in the large section
-    pub inline fn get_large(self: @This()) bool {
-        return (self.flag & 0b0000_0100) > 0;
+    pub inline fn get_large(self: *@This()) bool {
+        return (@ptrCast(*u8, &self.ptr)[0] & 0b0000_0100) > 0;
     }
 
     pub inline fn set_large(self: *@This(), val: bool) void {
         if (val) {
-            self.flag |= 0b0000_0100;
+            @ptrCast([*]u8, &self.ptr)[0] |= 0b0000_0100;
         } else {
-            self.flag &= 0b1111_1011;
-        }
-    }
-
-    // Destruct method
-    pub inline fn get_method_destruct(self: @This()) bool {
-        return (self.flag & 0b0000_1000) > 0;
-    }
-
-    pub inline fn set_method_destruct(self: *@This(), val: bool) void {
-        if (val) {
-            self.flag |= 0b0000_1000;
-        } else {
-            self.flag &= 0b1111_0111;
+            @ptrCast([*]u8, &self.ptr)[0] &= 0b1111_1011;
         }
     }
 };
@@ -126,9 +102,8 @@ pub const Block = struct {
     pub fn create(allocator: Allocator, size: usize) !@This() {
         // if its not a power of 2, we find a power of 2 that fits size.
         var actual_size = size;
-        if (!std.math.isPowerOfTwo(actual_size)) {
+        if (!std.math.isPowerOfTwo(actual_size))
             actual_size = closest_pow_2_greater(actual_size);
-        }
 
         return @This(){
             .ptr = (try allocator.alloc(u8, actual_size)).ptr,
@@ -150,14 +125,10 @@ const Hole = struct {
 // todo use bits instead of bytes
 pub const BlockMeta = struct {
     used: [LINE_COUNT]bool,
-    allocations: Linked(*Ref),
 
     pub fn default() @This() {
         return @This(){
             .used = [_]bool{false} ** LINE_COUNT,
-            .allocations = Linked(*Ref){
-                .first = null,
-            },
         };
     }
 
@@ -172,7 +143,6 @@ pub const BlockMeta = struct {
         var i: usize = starting_line;
         while (i < LINE_COUNT) : (i += 1) {
             if (!self.used[i]) {
-
                 // found start of a hole
                 if (start == null) {
                     start = i;
@@ -180,13 +150,11 @@ pub const BlockMeta = struct {
                 } else {
                     end += 1;
                 }
-            } else if (start != null) {
-                // we found a hole!
-                return Hole{ .start = start.?, .end = end };
-            } else if (self.used[i]) {
-                i += 1;
-            }
+            } else i += 1;
         }
+
+        if (start != null)
+            return Hole{ .start = start.?, .end = end }; // we found a hole!
 
         //no hole found
         return null;
@@ -214,9 +182,9 @@ pub const BumpBlock = struct {
 
     pub fn alloc(self: *@This(), context: *Heap, comptime T: type) !?*Ref {
         const ptr = self.alloc_size(context, @sizeOf(T));
-        if (ptr == null) {
+        if (ptr == null)
             return null;
-        }
+
         return @ptrCast(*T, ptr.?);
     }
 
@@ -234,26 +202,23 @@ pub const BumpBlock = struct {
         }
     }
 
+    // todo fix everything!
     pub fn alloc_size(self: *@This(), context: *Heap, size: usize) !?*Ref {
-        const lines_spanned = @intCast(u8, try std.math.divCeil(usize, size, LINE_COUNT));
+        const header = @sizeOf(usize) + @sizeOf(*Ref);
+        const actual_size = size + header;
+        const lines_spanned: usize = @intCast(u8, try std.math.divCeil(usize, actual_size, LINE_SIZE));
         const next_bump = self.cursor + (lines_spanned * LINE_SIZE);
-        const holes = try std.math.divCeil(usize, self.limit - self.cursor, LINE_COUNT);
+        const holes = self.limit - self.cursor;
 
         if (next_bump > (holes * LINE_SIZE)) {
-            const hole = self.meta.find_next_available_hole(0);
-            if (hole == null) {
-                // we out of holes to find_next_available_hole
+            const hole = self.meta.find_next_available_hole(0) orelse return null; // we out of holes to find_next_available_hole
+            self.cursor = hole.start;
+            self.limit = hole.end;
+            const dif = self.limit - self.cursor;
+            if (dif * LINE_SIZE < actual_size)
                 return null;
-            } else {
-                self.cursor = hole.?.start;
-                self.limit = hole.?.end;
-                const dif = self.limit - self.cursor;
-                if (dif * LINE_SIZE < size) {
-                    return null;
-                } else {
-                    return self.alloc_size(context, size);
-                }
-            }
+
+            return self.alloc_size(context, actual_size);
         } else {
             var i: usize = 0;
             while (i < (lines_spanned)) {
@@ -266,23 +231,14 @@ pub const BumpBlock = struct {
             const offset = self.cursor;
             self.cursor = next_bump;
             const start = @ptrToInt(self.block.ptr);
-            const result = try context.create_fean_ptr(start + offset);
-            result.heap_size = lines_spanned;
-            result.offset = @intCast(u16, offset);
+            const result = try context.create_fean_ptr(start + offset + header);
 
-            var node = try context.underlying_allocator.create(Linked(*Ref).Node);
-            node.data = result;
-
-            self.meta.allocations.prepend(node);
+            @intToPtr(*usize, start + offset).* = lines_spanned;
+            @intToPtr(**Ref, start + offset + @sizeOf(usize)).* = result;
 
             return result;
         }
     }
-};
-
-pub const ObjectAllocation = struct {
-    obj: *Ref,
-    item: *Ref,
 };
 
 // TODO Mark-Sweep
@@ -302,6 +258,8 @@ pub const Heap = struct {
     pub fn create(allocator: Allocator) !*@This() {
         var result = try allocator.create(@This());
 
+        result.mark = false;
+
         result.head = try BumpBlock.create(allocator);
         result.overflow = try BumpBlock.create(allocator);
         result.rest = List(*BumpBlock).init(allocator);
@@ -314,24 +272,6 @@ pub const Heap = struct {
         var ref = try Ref.create(self.underlying_allocator, ptr);
         ref.set_mark(!self.mark);
         return ref;
-    }
-
-    pub fn alloc_object(self: *@This(), size: usize) !ObjectAllocation {
-        const item = try self.alloc(size);
-        var obj = try self.create_object(item);
-
-        return ObjectAllocation{
-            .obj = obj,
-            .item = item,
-        };
-    }
-
-    fn create_object(self: *@This(), inner: *Ref) !*Ref {
-        var obj = try self.alloc(@sizeOf(Object));
-        var inner_obj = obj.resolve(*Object);
-        inner_obj.methods = null;
-        inner_obj.body = inner;
-        return obj;
     }
 
     pub fn alloc(self: *@This(), size: usize) !*Ref {
@@ -388,7 +328,7 @@ pub const Heap = struct {
         return result;
     }
 
-    pub fn gc(self: *@This()) void {
+    pub fn gc(self: *@This()) !void {
         std.debug.assert(!self.collecting); // can only collect once at a time
         self.collecting = true;
         var thread = try std.Thread.spawn(.{}, @This().__gc, .{self});
@@ -396,24 +336,35 @@ pub const Heap = struct {
     }
 
     fn __gc(self: *@This()) void {
-        for (self.rest) |*bb| {
-            for (bb.meta.allocations) |node| {
-                const ref = node.data;
-                const reachable = ref.get_mark() == self.mark;
-                if (!reachable) {
-                    for (ref.offset..(ref.offset + ref.heap_size)) |i| {
-                        bb.meta.used[i] = false;
+        for (self.rest.items) |bb| {
+            var bump: *BumpBlock = bb;
+            var i: usize = 0;
+            const start = @ptrToInt(bb.block.ptr);
+            while (i < LINE_COUNT) {
+                if (bump.meta.used[i]) {
+                    const offset = i * LINE_SIZE;
+                    const size = @intToPtr(*usize, start + offset).*;
+                    var ref: *Ref = @intToPtr(**Ref, start + offset + @sizeOf(usize)).*;
+
+                    const mark = ref.get_mark();
+                    if (mark != self.mark) {
+                        for (i..(i + size)) |to_free| {
+                            bump.meta.used[to_free] = false;
+                        }
                     }
 
-                    bb.meta.allocations.remove(node);
-                    self.pointers.remove(node);
+                    i += size;
+                } else {
+                    while (i < LINE_COUNT and !bump.meta.used[i]) i += 1;
                 }
             }
-            bb.find_next_available_hole(0);
         }
+        self.mark = !self.mark;
+        self.collecting = false;
     }
 
     pub fn debug(self: *@This()) void {
+        while (self.collecting) continue;
         std.debug.print("[HEAP]\n", .{});
 
         var head_bytes: usize = 0;

@@ -141,6 +141,9 @@ pub const Resolver = struct {
                     try self.expand_visit(scope_node, &head);
                 }
             },
+            .impl => |*i| {
+                _ = i;
+            },
             .structure => |*s| {
                 if (scope.lookup_kind(s.name) != null)
                     return;
@@ -290,6 +293,9 @@ pub const Resolver = struct {
 
                 // todo maybe allow a scope to be a kind
                 return null;
+            },
+            .impl => {
+                unreachable;
             },
             .structure => {
                 return null;
@@ -473,8 +479,8 @@ pub const Resolver = struct {
                 return null;
             },
             .binary_expression => |b| {
-                const l_kind = try self.kind_visit(b.lhs, scope);
-                const r_kind = try self.kind_visit(b.rhs, scope);
+                const l_kind = unpack(b.lhs, try self.kind_visit(b.lhs, scope));
+                const r_kind = unpack(b.lhs, try self.kind_visit(b.rhs, scope));
 
                 // todo actually make work lol
                 if (l_kind != null) {
@@ -504,10 +510,6 @@ pub const Resolver = struct {
                 return null;
             },
             .get => |*g| {
-                //if (g.object.* == .get or g.object.* == .set) {
-                //    const child_kind: Kind = (try self.kind_visit(g.object, scope)).?.resolved;
-                //    return SymbolKind{ .resolved = child_kind.lookup_field(g.name).?.kind };
-                //}
                 const accessing = (try self.kind_visit(g.object, scope)).?;
                 if (g.kind == null)
                     g.kind = accessing;
@@ -516,17 +518,16 @@ pub const Resolver = struct {
 
                 return g.kind;
             },
-            .set => |s| {
-                _ = s;
+            .set => |*s| {
+                const accessing = (try self.kind_visit(s.object, scope)).?;
+                if (s.kind == null)
+                    s.kind = accessing;
+                if (s.field == .unresolved)
+                    s.field = FieldOrName{ .resolved = accessing.resolved.lookup_field(s.field.unresolved) orelse return null };
 
-                unreachable;
-                //if (s.object.* == .get or s.object.* == .set) {
-                //    const child_kind: Kind = (try self.kind_visit(s.object, scope)).?.resolved;
-                //    return SymbolKind{ .resolved = child_kind.lookup_field(s.name).?.kind };
-                //}
-                //
-                //_ = try self.kind_visit(s.value, scope);
-                //return self.kind_visit(s.object, scope);
+                _ = try self.kind_visit(s.value, scope);
+
+                return s.kind;
             },
             .object => |o| {
                 _ = o;
@@ -584,6 +585,9 @@ pub const Resolver = struct {
                 for (s.statments.?) |scope_node| {
                     try self.symbol_visit(scope_node, &head);
                 }
+            },
+            .impl => |i| {
+                _ = i;
             },
             .structure => |s| {
                 _ = s;
@@ -771,7 +775,25 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
     var size: usize = 0;
     var fields: ?*FieldList = null;
     for (structure.fields.?) |field| {
-        if (actual_alignment == 1) {
+        if (field.kind.? == .resolved and field.kind.?.resolved.is_struct) {
+            const closest = closest_aligned(size, actual_alignment);
+            const padding = closest - size;
+            const shifted_padding = @shlWithOverflow(padding, 1)[0];
+
+            var field_kind = field.kind.?.resolved;
+            var result: Field = undefined;
+            if (fields == null) {
+                fields = try FieldList.create(field.name, field_kind, allocator);
+                fields.?.*.padding = @truncate(u2, shifted_padding);
+                fields.?.*.alignment = alignment;
+            } else {
+                result = try fields.?.install(field.name, field_kind, allocator);
+                result.*.padding = @truncate(u2, shifted_padding);
+                result.*.alignment = alignment;
+            }
+
+            size += (8 + padding);
+        } else if (actual_alignment == 1) {
             const field_kind = switch (field.kind orelse return false) {
                 .resolved => |r| r,
                 .unresolved => return false,
@@ -814,7 +836,7 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
     }
 
     todo.is_complete = true;
-    structure.this.?.size = size;
+    structure.this.?.size = size + 8;
     structure.this.?.fields = fields;
     allocator.free(structure.fields.?);
 
@@ -874,6 +896,22 @@ fn install_fn_kind(self: *Resolver, scope: *Scope, name: []const u8, params: []P
         }
 
         _ = try kind.install_field("", param_kind, allocator);
+    }
+
+    return kind;
+}
+
+inline fn unpack(node: *Node, kind: ?SymbolKind) ?SymbolKind {
+    if (kind == null)
+        return null;
+
+    if (node.* == .get) {
+        var cursor = node;
+        while (cursor.get.object.* == .get) {
+            cursor = cursor.get.object;
+        }
+
+        return SymbolKind{ .resolved = cursor.get.field.resolved.kind };
     }
 
     return kind;

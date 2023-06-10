@@ -21,6 +21,7 @@ pub const Global = @import("global.zig").Global;
 pub const Item = @import("value/item.zig").Item;
 // Dict
 pub const Dict = @import("value/dict.zig").Dict;
+pub const DictEntry = @import("value/dict.zig").DictEntry;
 // Function
 pub const Function = @import("value/function.zig").Function;
 pub const CallFrame = @import("value/function.zig").CallFrame;

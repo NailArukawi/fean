@@ -3,7 +3,7 @@ const std = @import("std");
 
 const vm = @import("../vm/mod.zig");
 const Allocator = std.mem.Allocator;
-const Methods = @import("../vm/value/function.zig");
+const Methods = @import("../vm/value/function.zig").Methods;
 
 pub const KindMeta = struct {
     is_fn: bool,
@@ -18,6 +18,7 @@ pub const Kind = *KindTable;
 pub const KindTable = struct {
     name: []const u8,
     size: usize,
+    is_struct: bool = false,
     fields: ?*FieldList,
     methods: ?Methods,
     meta: KindMeta,
@@ -54,16 +55,21 @@ pub const KindTable = struct {
         _ = try self.install("f32", null, @sizeOf(f32), allocator);
         _ = try self.install("void", null, @sizeOf(void), allocator);
         _ = try self.install("bool", null, @sizeOf(bool), allocator);
-        _ = try self.install("Dict", null, @sizeOf(Dict), allocator);
-        _ = try self.install("Text", null, @sizeOf(Text), allocator);
-        _ = try self.install("Fn", null, FN_SIZE, allocator);
-        _ = try self.install("ExternFn", null, EXTERN_FN_SIZE, allocator);
+        var dict = try self.install("Dict", null, @sizeOf(Dict), allocator);
+        dict.is_struct = true;
+        var text = try self.install("Text", null, @sizeOf(Text), allocator);
+        text.is_struct = true;
+        var _fn = try self.install("Fn", null, FN_SIZE, allocator);
+        _fn.is_struct = true;
+        var _extern_fn = try self.install("ExternFn", null, EXTERN_FN_SIZE, allocator);
+        _extern_fn.is_struct = true;
 
         return self;
     }
 
     inline fn default(self: *@This()) void {
         self.size = std.math.maxInt(usize);
+        self.is_struct = false;
         self.fields = null;
         self.methods = null;
         self.meta = KindMeta{

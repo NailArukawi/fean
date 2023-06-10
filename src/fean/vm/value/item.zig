@@ -26,7 +26,7 @@ pub const Item = extern union {
     any: ?*anyopaque,
 
     pub inline fn resolve_object(self: @This()) *Object {
-        return self.object.resolve(*Object);
+        return self.object.object();
     }
 
     pub inline fn text(self: @This()) *Text {

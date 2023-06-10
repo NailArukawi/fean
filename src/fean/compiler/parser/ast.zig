@@ -148,6 +148,11 @@ pub const Node = union(enum) {
         this: ?Kind,
         fields: ?[]Field,
     },
+    impl: struct {
+        //span: Span,
+        this: ?SymbolKind,
+        body: *Node,
+    },
     construct: struct {
         //span: Span,
         kind: ?SymbolKind,

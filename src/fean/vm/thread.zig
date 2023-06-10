@@ -133,6 +133,10 @@ pub const Thread = struct {
         _ = try self.globals.set(name_text, value);
     }
 
+    pub inline fn set_global_obj(self: *@This(), name_text: Item, value: Item) !void {
+        _ = try self.globals.set_obj(name_text, value);
+    }
+
     pub inline fn recalc_reg(self: *@This()) !void {
         // out of stack
         std.debug.assert(STACK_SIZE > (self.depth + self.stack_base));
@@ -173,6 +177,9 @@ pub const Thread = struct {
     }
 
     pub fn ret_fn(self: *@This()) !void {
+        // clean obj_bools
+        @memset(self.stack_view_obj[0..(self.depth * STACK_SIZE)], false);
+
         var frame = self.call_stack.pop();
 
         self.chunk = frame.function;
@@ -194,6 +201,15 @@ pub const Thread = struct {
         if (arguments != null) {
             @memcpy(self.register[1 .. to_call.arity + 1], arguments.?);
         }
+    }
+
+    pub fn gc(self: *@This()) !void {
+        const mark = self.heap.mark;
+        for (self.obj_map[0..(STACK_SIZE * (self.depth + self.stack_base))], 0..) |is_obj, i|
+            if (is_obj)
+                self.stack[i].object.set_mark(mark);
+        self.globals.mark();
+        try self.heap.gc();
     }
 
     pub fn execute(self: *@This()) void {
@@ -255,11 +271,11 @@ pub const Thread = struct {
                     if (has_return == 0) {
                         // call extern method with no return value
                         const arity = function.arity;
-                        function.body(self.register[arg_start..(arg_start + arity)], null);
+                        function.body(self, self.register[arg_start..(arg_start + arity)], null);
                     } else {
                         // call extern method with return value
                         const arity = function.arity;
-                        function.body(self.register[arg_start..(arg_start + arity)], &self.register[result]);
+                        function.body(self, self.register[arg_start..(arg_start + arity)], &self.register[result]);
                     }
                 },
                 //.invoke_extern => {
@@ -308,7 +324,11 @@ pub const Thread = struct {
                     const value_register = opcode.a();
                     const value = self.register[value_register];
                     const name = self.register[name_register];
-                    self.set_global(name, value) catch unreachable;
+                    if (self.register_obj[value_register]) {
+                        self.set_global_obj(name, value) catch unreachable;
+                    } else {
+                        self.set_global(name, value) catch unreachable;
+                    }
                 },
                 // todo copy obj bit
                 .get_upvalue => {
@@ -328,8 +348,12 @@ pub const Thread = struct {
                 .create_struct => {
                     const a = opcode.a();
                     const kind = self.load_literal(opcode.y()).kind;
-                    // todo get methods ptr
-                    self.register[a] = .{ .object = (self.heap.alloc_object(kind.size) catch unreachable).obj };
+
+                    var object = self.heap.alloc(kind.size) catch unreachable;
+                    if (kind.methods != null)
+                        object.object().methods = &kind.methods.?;
+
+                    self.register[a] = .{ .object = object };
                     self.register_obj[a] = true;
                 },
                 // todo copy obj bit
@@ -343,83 +367,83 @@ pub const Thread = struct {
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(u64)[index] = value;
+                    this.body_array(u64)[index] = value;
                 },
                 .set_struct_field_u32 => {
                     const value = self.register[opcode.a()].u32;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(u32)[index] = value;
+                    this.body_array(u32)[index] = value;
                 },
                 .set_struct_field_u16 => {
                     const value = self.register[opcode.a()].u16;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(u16)[index] = value;
+                    this.body_array(u16)[index] = value;
                 },
                 .set_struct_field_u8 => {
                     const value = self.register[opcode.a()].u8;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(u8)[index] = value;
+                    this.body_array(u8)[index] = value;
                 },
                 .set_struct_field_i64 => {
                     const value = self.register[opcode.a()].i64;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(i64)[index] = value;
+                    this.body_array(i64)[index] = value;
                 },
                 .set_struct_field_i32 => {
                     const value = self.register[opcode.a()].i32;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(i32)[index] = value;
+                    this.body_array(i32)[index] = value;
                 },
                 .set_struct_field_i16 => {
                     const value = self.register[opcode.a()].i16;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(i16)[index] = value;
+                    this.body_array(i16)[index] = value;
                 },
                 .set_struct_field_i8 => {
                     const value = self.register[opcode.a()].i8;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(i8)[index] = value;
+                    this.body_array(i8)[index] = value;
                 },
                 .set_struct_field_f64 => {
                     const value = self.register[opcode.a()].f64;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(f64)[index] = value;
+                    this.body_array(f64)[index] = value;
                 },
                 .set_struct_field_f32 => {
                     const value = self.register[opcode.a()].f32;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(f32)[index] = value;
+                    this.body_array(f32)[index] = value;
                 },
                 .set_struct_field_obj => {
                     const value = self.register[opcode.a()].object;
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    this.body.resolve_array(*Ref)[index] = value;
+                    this.body_array(*Ref)[index] = value;
                 },
                 .get_struct_field_i64 => {
                     const this: *Object = self.register[opcode.b()].resolve_object();
                     const index = opcode.z();
 
-                    self.register[opcode.a()] = Item.from(i64, this.body.resolve_array(i64)[index]);
+                    self.register[opcode.a()] = Item.from(i64, this.body_array(i64)[index]);
                 },
 
                 // Arithmetic

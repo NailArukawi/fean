@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 
 const Chunk = @import("../mod.zig").Chunk;
 
+const Thread = @import("../mod.zig").Thread;
 const Item = @import("item.zig").Item;
 const Object = @import("object.zig").Object;
 const Dict = @import("dict.zig").Dict;
@@ -26,7 +27,7 @@ pub const InternalFunction = extern struct { arity: u8, result: bool, body: *Chu
 pub const ExternFunction = extern struct {
     arity: u8,
     result: bool,
-    body: *const fn (args: []Item, result: ?*Item) void,
+    body: *const fn (vm: *Thread, args: []Item, result: ?*Item) void,
 };
 
 pub const Method = struct {

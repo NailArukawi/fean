@@ -1175,6 +1175,14 @@ pub const Assembler = struct {
 
                 fta.memory.internal.body = assembled_fn_body.chunk;
             },
+            .reserve => |r| {
+                _ = r;
+                lines_written = 0;
+            },
+            .drop => |d| {
+                _ = d;
+                lines_written = 0;
+            },
 
             // extended
             .extended => unreachable,

@@ -13,6 +13,7 @@ const Kind = mod.Kind;
 const KindTable = mod.KindTable;
 
 const Item = @import("../vm/mod.zig").Item;
+const Methods = @import("../vm/mod.zig").Methods;
 const Function = @import("../vm/mod.zig").Function;
 const Text = @import("../vm/mod.zig").Text;
 const Object = @import("../vm/mod.zig").Object;
@@ -41,6 +42,7 @@ pub const AddressKind = enum(u8) {
 pub const Extra = enum(u56) {
     detach,
     copy_if_move,
+    set_mode,
 };
 
 pub const Address = struct {
@@ -373,6 +375,8 @@ pub const Instr = union(enum) {
         // block is an raw adress
         block: ?Address,
     },
+    reserve: struct { nr: u10, reg: bool },
+    drop: struct { nr: u10, reg: bool },
 
     // extended
     extended,
@@ -423,7 +427,7 @@ pub const Instr = union(enum) {
             .load_global_obj, .load_global => |g| {
                 const global_name = g.result.register();
                 const result = g.a.literal();
-                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = Global(\"reg[{}]\")", .{ @tagName(self), global_name, result });
+                return try std.fmt.bufPrint(buffer, "{s}:\treg[{}] = Global(\"reg[{}]\")", .{ @tagName(self), result, global_name });
             },
             .store_global => |g| {
                 const global_name = g.result.register();
@@ -468,8 +472,16 @@ pub const Instr = union(enum) {
 
             // meta
             .block => |b| {
-                for (b.body.as_slice(), 0..) |ir, i| {
-                    std.debug.print("   [{}]:\t({s})\n", .{ i, (try ir.debug(buffer)).? });
+                var i: usize = 0;
+                for (b.body.as_slice()) |ir| {
+                    const ir_text = try ir.debug(buffer);
+                    const is_drop_or_reserve: bool = (ir_text.?.len > 4 and std.mem.eql(u8, "drop:", ir_text.?[0..5])) or (ir_text.?.len > 7 and std.mem.eql(u8, "reserve:", ir_text.?[0..8]));
+                    if (is_drop_or_reserve) {
+                        std.debug.print("-----:\t<{s}>\n", .{ir_text.?});
+                    } else {
+                        std.debug.print("   [{}]:\t({s})\n", .{ i, ir_text.? });
+                        i += 1;
+                    }
                 }
                 return "Block end";
             },
@@ -562,7 +574,16 @@ pub const Instr = union(enum) {
                 return try std.fmt.bufPrint(buffer, "{s}:\t{s}", .{ @tagName(self), dest });
             },
             .fn_to_assemble => return null,
-
+            .reserve => |r| {
+                if (r.reg)
+                    return try std.fmt.bufPrint(buffer, "{s}:\t reg[{}]", .{ @tagName(self), r.nr });
+                return try std.fmt.bufPrint(buffer, "{s}:\t temp[{}]", .{ @tagName(self), r.nr });
+            },
+            .drop => |d| {
+                if (d.reg)
+                    return try std.fmt.bufPrint(buffer, "{s}:\t reg[{}]", .{ @tagName(self), d.nr });
+                return try std.fmt.bufPrint(buffer, "{s}:\t temp[{}]", .{ @tagName(self), d.nr });
+            },
             else => {
                 return try std.fmt.bufPrint(buffer, "{s}:\tUNKNOWN", .{@tagName(self)});
             },
@@ -582,6 +603,7 @@ pub const IRBlock = struct {
     temporaries: u10 = 0,
 
     inlining: bool = false,
+    optimize: bool = true,
 
     pub fn create(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable, kinds: ?*KindTable) !*@This() {
         var result = try allocator.create(@This());
@@ -631,6 +653,9 @@ pub const IRBlock = struct {
             const temp = 1023 - self.temporaries;
             self.temporaries += 1;
 
+            if (self.optimize)
+                self.body.push(.{ .reserve = .{ .nr = temp, .reg = false } }) catch unreachable;
+
             // return can't be a temp register
             std.debug.assert(temp != 0);
             return Address.new_temporary(temp);
@@ -644,27 +669,42 @@ pub const IRBlock = struct {
             return null;
         } else {
             self.registers += 1;
+
+            if (self.optimize)
+                self.body.push(.{ .reserve = .{ .nr = self.registers, .reg = true } }) catch unreachable;
+
             return Address.new_register(self.registers);
         }
     }
 
     pub fn drop_temp(self: *@This()) void {
         std.debug.assert(-1 < (self.temporaries - 1));
+        if (self.optimize)
+            self.body.push(.{ .drop = .{ .nr = 1023 - self.temporaries + 1, .reg = false } }) catch unreachable;
         self.temporaries -= 1;
     }
 
     pub fn drop_temps(self: *@This(), count: u10) void {
         std.debug.assert(-1 < (self.temporaries - count));
+        if (self.optimize)
+            for (self.temporaries..(self.temporaries + count)) |tnr|
+                self.body.push(.{ .drop = .{ .nr = @intCast(u10, 1023 - tnr), .reg = false } }) catch unreachable;
+
         self.temporaries -= count;
     }
 
     pub fn drop_reg(self: *@This()) void {
         std.debug.assert(-1 < (self.registers - 1));
+        if (self.optimize)
+            self.body.push(.{ .drop = .{ .nr = self.registers, .reg = true } }) catch unreachable;
         self.registers -= 1;
     }
 
     pub fn drop_regs(self: *@This(), count: u10) void {
         std.debug.assert(-1 < (self.registers - count));
+        if (self.optimize)
+            for (self.registers..(self.registers + count)) |rnr|
+                self.body.push(.{ .drop = .{ .nr = @intCast(u10, rnr), .reg = true } }) catch unreachable;
         self.registers -= count;
     }
 };
@@ -687,6 +727,8 @@ pub const IR = struct {
     registers: u10 = 0,
     temporaries: u10 = 0,
 
+    optimize: bool = true,
+
     pub fn create(allocator: Allocator, meta: *CompilerMeta) !*@This() {
         var result = try allocator.create(@This());
 
@@ -695,6 +737,8 @@ pub const IR = struct {
         result.body = try Stack(Instr).create(allocator, 64);
         result.registers = 0;
         result.temporaries = 0;
+
+        result.optimize = true;
 
         return result;
     }
@@ -738,6 +782,9 @@ pub const IR = struct {
             const temp = 1023 - self.temporaries;
             self.temporaries += 1;
 
+            if (self.optimize)
+                self.body.push(.{ .reserve = .{ .nr = temp, .reg = false } }) catch unreachable;
+
             // return can't be a temp register
             std.debug.assert(temp != 0);
             return Address.new_temporary(temp);
@@ -751,27 +798,42 @@ pub const IR = struct {
             return null;
         } else {
             self.registers += 1;
+
+            if (self.optimize)
+                self.body.push(.{ .reserve = .{ .nr = self.registers, .reg = true } }) catch unreachable;
+
             return Address.new_register(self.registers);
         }
     }
 
     pub fn drop_temp(self: *@This()) void {
         std.debug.assert(-1 < (self.temporaries - 1));
+        if (self.optimize)
+            self.body.push(.{ .drop = .{ .nr = 1023 - self.temporaries + 1, .reg = false } }) catch unreachable;
         self.temporaries -= 1;
     }
 
     pub fn drop_temps(self: *@This(), count: u10) void {
         std.debug.assert(-1 < (self.temporaries - count));
+        if (self.optimize)
+            for (self.temporaries..(self.temporaries + count)) |tnr|
+                self.body.push(.{ .drop = .{ .nr = @intCast(u10, 1023 - tnr), .reg = false } }) catch unreachable;
+
         self.temporaries -= count;
     }
 
     pub fn drop_reg(self: *@This()) void {
         std.debug.assert(-1 < (self.registers - 1));
+        if (self.optimize)
+            self.body.push(.{ .drop = .{ .nr = self.registers, .reg = true } }) catch unreachable;
         self.registers -= 1;
     }
 
     pub fn drop_regs(self: *@This(), count: u10) void {
         std.debug.assert(-1 < (self.registers - count));
+        if (self.optimize)
+            for (self.registers..(self.registers + count)) |rnr|
+                self.body.push(.{ .drop = .{ .nr = @intCast(u10, rnr), .reg = true } }) catch unreachable;
         self.registers -= count;
     }
 
@@ -856,8 +918,13 @@ pub const IR = struct {
         for (self.body.as_slice()) |ir| {
             const ir_text = try ir.debug(buffer);
             if (ir_text != null) {
-                std.debug.print("[{}]:\t({s})\n", .{ i, ir_text.? });
-                i += 1;
+                const is_drop_or_reserve: bool = (ir_text.?.len > 4 and std.mem.eql(u8, "drop:", ir_text.?[0..5])) or (ir_text.?.len > 7 and std.mem.eql(u8, "reserve:", ir_text.?[0..8]));
+                if (is_drop_or_reserve) {
+                    std.debug.print("--:\t<{s}>\n", .{ir_text.?});
+                } else {
+                    std.debug.print("[{}]:\t({s})\n", .{ i, ir_text.? });
+                    i += 1;
+                }
             }
         }
     }
@@ -1160,6 +1227,9 @@ pub const Compiler = struct {
                 } else {
                     try scope.push_instr(Instr{ .block = block.block });
                 }
+            },
+            .impl => {
+                unreachable;
             },
             .structure => |*s| {
                 if (scope.lookup_symbol(s.name) == null) {
@@ -1465,7 +1535,7 @@ pub const Compiler = struct {
                 try self.generate_call(node, scope, address, extra);
             },
             .get => |g| {
-                const child = (try self.generate(g.object, scope, null, null)).?;
+                const child = (try self.generate(g.object, scope, null, extra)).?;
 
                 // todo handle no registers!
                 const address = if (result != null) result.? else scope.get_temp().?;
@@ -1478,14 +1548,56 @@ pub const Compiler = struct {
                     .this = child,
                     .index = Address.new_field(@intCast(u56, field.index)),
                 };
-                if (mem.eql(u8, kind_name, "u64")) {
-                    try scope.push_instr(Instr{ .get_struct_field_u64 = access });
-                } else if (mem.eql(u8, kind_name, "i64")) {
-                    try scope.push_instr(Instr{ .get_struct_field_i64 = access });
+
+                if (extra != null and extra.?.extra() == .set_mode) {
+                    if (mem.eql(u8, kind_name, "u64")) {
+                        try scope.push_instr(Instr{ .set_struct_field_u64 = access });
+                    } else if (mem.eql(u8, kind_name, "i64")) {
+                        try scope.push_instr(Instr{ .set_struct_field_i64 = access });
+                    }
+                } else {
+                    if (mem.eql(u8, kind_name, "u64")) {
+                        try scope.push_instr(Instr{ .get_struct_field_u64 = access });
+                    } else if (mem.eql(u8, kind_name, "i64")) {
+                        try scope.push_instr(Instr{ .get_struct_field_i64 = access });
+                    }
                 }
             },
-            .set => {
-                unreachable;
+            .set => |s| {
+                // todo handle no registers!
+                const child = scope.get_temp().?;
+                defer scope.drop_temp();
+                var moved = try self.generate(s.object, scope, child, null);
+                if (moved != null)
+                    return moved;
+
+                // todo handle no registers!
+                const address = scope.get_temp().?;
+                defer scope.drop_temp();
+                moved = try self.generate(s.value, scope, address, null);
+                if (moved != null)
+                    return moved;
+
+                const kind_name = s.field.resolved.kind.name;
+                const field = s.field.resolved;
+                const access = StructAccess{
+                    .reg = address,
+                    .this = child,
+                    .index = Address.new_field(@intCast(u56, field.index)),
+                };
+
+                if (mem.eql(u8, kind_name, "u64")) {
+                    try scope.push_instr(Instr{ .set_struct_field_u64 = access });
+                } else if (mem.eql(u8, kind_name, "i64")) {
+                    try scope.push_instr(Instr{ .set_struct_field_i64 = access });
+                }
+
+                const set_extra = Address.new_extra(.set_mode);
+                if (s.object.* == .get) {
+                    _ = try self.generate(s.object, scope, address, set_extra);
+                } else {
+                    _ = try self.generate(s.object, scope, child, set_extra);
+                }
             },
             .object => {
                 unreachable;
@@ -1871,124 +1983,137 @@ pub const Compiler = struct {
             .resolved => |s| s.name,
         };
 
+        var arithmatic: Arithmetic = .{ .result = result, .a = lhs, .b = rhs };
+
         switch (exp.op.data.symbol) {
             .plus => {
                 if (mem.eql(u8, kind, "u64")) {
-                    try scope.push_instr(Instr{ .add_u64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .add_u64 = arithmatic });
+                } else if (mem.eql(u8, kind, "u32")) {
+                    try scope.push_instr(Instr{ .add_u32 = arithmatic });
+                } else if (mem.eql(u8, kind, "u16")) {
+                    try scope.push_instr(Instr{ .add_u16 = arithmatic });
+                } else if (mem.eql(u8, kind, "u8")) {
+                    try scope.push_instr(Instr{ .add_u8 = arithmatic });
                 } else if (mem.eql(u8, kind, "i64")) {
-                    try scope.push_instr(Instr{ .add_i64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .add_i64 = arithmatic });
+                } else if (mem.eql(u8, kind, "i32")) {
+                    try scope.push_instr(Instr{ .add_i32 = arithmatic });
+                } else if (mem.eql(u8, kind, "i16")) {
+                    try scope.push_instr(Instr{ .add_i16 = arithmatic });
+                } else if (mem.eql(u8, kind, "i8")) {
+                    try scope.push_instr(Instr{ .add_i8 = arithmatic });
                 } else if (mem.eql(u8, kind, "f64")) {
-                    try scope.push_instr(Instr{ .add_f64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .add_f64 = arithmatic });
+                } else if (mem.eql(u8, kind, "f32")) {
+                    try scope.push_instr(Instr{ .add_f32 = arithmatic });
                 } else {
                     unreachable;
                 }
             },
             .minus => {
                 if (mem.eql(u8, kind, "u64")) {
-                    try scope.push_instr(Instr{ .sub_u64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .sub_u64 = arithmatic });
+                } else if (mem.eql(u8, kind, "u32")) {
+                    try scope.push_instr(Instr{ .sub_u32 = arithmatic });
+                } else if (mem.eql(u8, kind, "u16")) {
+                    try scope.push_instr(Instr{ .sub_u16 = arithmatic });
+                } else if (mem.eql(u8, kind, "u8")) {
+                    try scope.push_instr(Instr{ .sub_u8 = arithmatic });
                 } else if (mem.eql(u8, kind, "i64")) {
-                    try scope.push_instr(Instr{ .sub_i64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .sub_i64 = arithmatic });
+                } else if (mem.eql(u8, kind, "i32")) {
+                    try scope.push_instr(Instr{ .sub_i32 = arithmatic });
+                } else if (mem.eql(u8, kind, "i16")) {
+                    try scope.push_instr(Instr{ .sub_i16 = arithmatic });
+                } else if (mem.eql(u8, kind, "i8")) {
+                    try scope.push_instr(Instr{ .sub_i8 = arithmatic });
                 } else if (mem.eql(u8, kind, "f64")) {
-                    try scope.push_instr(Instr{ .sub_f64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .sub_f64 = arithmatic });
+                } else if (mem.eql(u8, kind, "f32")) {
+                    try scope.push_instr(Instr{ .sub_f32 = arithmatic });
                 } else {
                     unreachable;
                 }
             },
             .slash => {
                 if (mem.eql(u8, kind, "u64")) {
-                    try scope.push_instr(Instr{ .div_u64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .div_u64 = arithmatic });
+                } else if (mem.eql(u8, kind, "u32")) {
+                    try scope.push_instr(Instr{ .div_u32 = arithmatic });
+                } else if (mem.eql(u8, kind, "u16")) {
+                    try scope.push_instr(Instr{ .div_u16 = arithmatic });
+                } else if (mem.eql(u8, kind, "u8")) {
+                    try scope.push_instr(Instr{ .div_u8 = arithmatic });
                 } else if (mem.eql(u8, kind, "i64")) {
-                    try scope.push_instr(Instr{ .div_i64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .div_i64 = arithmatic });
+                } else if (mem.eql(u8, kind, "i32")) {
+                    try scope.push_instr(Instr{ .div_i32 = arithmatic });
+                } else if (mem.eql(u8, kind, "i16")) {
+                    try scope.push_instr(Instr{ .div_i16 = arithmatic });
+                } else if (mem.eql(u8, kind, "i8")) {
+                    try scope.push_instr(Instr{ .div_i8 = arithmatic });
                 } else if (mem.eql(u8, kind, "f64")) {
-                    try scope.push_instr(Instr{ .div_f64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .div_f64 = arithmatic });
+                } else if (mem.eql(u8, kind, "f32")) {
+                    try scope.push_instr(Instr{ .div_f32 = arithmatic });
                 } else {
                     unreachable;
                 }
             },
             .star => {
                 if (mem.eql(u8, kind, "u64")) {
-                    try scope.push_instr(Instr{ .mul_u64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .mul_u64 = arithmatic });
+                } else if (mem.eql(u8, kind, "u32")) {
+                    try scope.push_instr(Instr{ .mul_u32 = arithmatic });
+                } else if (mem.eql(u8, kind, "u16")) {
+                    try scope.push_instr(Instr{ .mul_u16 = arithmatic });
+                } else if (mem.eql(u8, kind, "u8")) {
+                    try scope.push_instr(Instr{ .mul_u8 = arithmatic });
                 } else if (mem.eql(u8, kind, "i64")) {
-                    try scope.push_instr(Instr{ .mul_i64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .mul_i64 = arithmatic });
+                } else if (mem.eql(u8, kind, "i32")) {
+                    try scope.push_instr(Instr{ .mul_i32 = arithmatic });
+                } else if (mem.eql(u8, kind, "i16")) {
+                    try scope.push_instr(Instr{ .mul_i16 = arithmatic });
+                } else if (mem.eql(u8, kind, "i8")) {
+                    try scope.push_instr(Instr{ .mul_i8 = arithmatic });
                 } else if (mem.eql(u8, kind, "f64")) {
-                    try scope.push_instr(Instr{ .mul_f64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .mul_f64 = arithmatic });
+                } else if (mem.eql(u8, kind, "f32")) {
+                    try scope.push_instr(Instr{ .mul_f32 = arithmatic });
                 } else {
                     unreachable;
                 }
             },
             .less, .greater => {
                 if (exp.op.data.symbol == .greater) {
-                    const tmp = lhs;
-                    lhs = rhs;
-                    rhs = tmp;
+                    arithmatic.b = rhs;
+                    arithmatic.a = lhs;
                 }
 
                 if (mem.eql(u8, kind, "u64")) {
-                    try scope.push_instr(Instr{ .less_than_u64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .less_than_u64 = arithmatic });
+                } else if (mem.eql(u8, kind, "u32")) {
+                    try scope.push_instr(Instr{ .less_than_u32 = arithmatic });
+                } else if (mem.eql(u8, kind, "u16")) {
+                    try scope.push_instr(Instr{ .less_than_u16 = arithmatic });
+                } else if (mem.eql(u8, kind, "u8")) {
+                    try scope.push_instr(Instr{ .less_than_u8 = arithmatic });
                 } else if (mem.eql(u8, kind, "i64")) {
-                    try scope.push_instr(Instr{ .less_than_i64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .less_than_i64 = arithmatic });
+                } else if (mem.eql(u8, kind, "i32")) {
+                    try scope.push_instr(Instr{ .less_than_i32 = arithmatic });
+                } else if (mem.eql(u8, kind, "i16")) {
+                    try scope.push_instr(Instr{ .less_than_i16 = arithmatic });
+                } else if (mem.eql(u8, kind, "i8")) {
+                    try scope.push_instr(Instr{ .less_than_i8 = arithmatic });
                 } else if (mem.eql(u8, kind, "f64")) {
-                    try scope.push_instr(Instr{ .less_than_f64 = .{
-                        .result = result,
-                        .a = lhs,
-                        .b = rhs,
-                    } });
+                    try scope.push_instr(Instr{ .less_than_f64 = arithmatic });
+                } else if (mem.eql(u8, kind, "f32")) {
+                    try scope.push_instr(Instr{ .less_than_f32 = arithmatic });
+                } else {
+                    unreachable;
                 }
             },
             else => unreachable,
@@ -1999,15 +2124,15 @@ pub const Compiler = struct {
         const function = node.function;
 
         const ptr = self.config.fn_lookup.?(function.body.name);
-        const object = try self.heap.alloc_object(@sizeOf(Function));
-        const body = object.item.resolve(*Function);
+        const object = try self.heap.alloc(@sizeOf(Function) + @sizeOf(?*Methods));
+        const body = object.object().function();
         body.* = Function{ .external = .{
             .arity = @intCast(u8, function.params.len),
             .result = (function.result != null),
             .body = ptr.?,
         } };
 
-        const lit = try self.push_literal(Item{ .object = object.obj }, .ExternFn);
+        const lit = try self.push_literal(Item{ .object = object }, .ExternFn);
         try scope.push_instr(.{ .load_literal = .{
             .result = result,
             .a = lit,
@@ -2017,8 +2142,8 @@ pub const Compiler = struct {
     fn generate_internal_function(self: *@This(), node: *Node, scope: Scope, result: Address) !void {
         const function = node.function;
 
-        const object = try self.heap.alloc_object(@sizeOf(Function));
-        const body = object.item.resolve(*Function);
+        const object = try self.heap.alloc(@sizeOf(Function) + @sizeOf(?*Methods));
+        const body = object.object().function();
 
         var fn_head = false;
         if (!self.in_function) {
@@ -2032,7 +2157,7 @@ pub const Compiler = struct {
         body.*.internal.arity = @intCast(u8, function.params.len);
         body.*.internal.result = (function.result != null);
 
-        const lit = try self.push_literal(Item{ .object = object.obj }, .InternalFn);
+        const lit = try self.push_literal(Item{ .object = object }, .InternalFn);
 
         // todo params
 
@@ -2176,6 +2301,15 @@ pub const Compiler = struct {
                         .a = name_lit,
                     } });
 
+                    if (extra != null and extra.?.extra() == .set_mode) {
+                        try scope.push_instr(.{ .store_global = .{
+                            .result = global_name,
+                            .a = result,
+                        } });
+
+                        return null;
+                    }
+
                     // load the global into a register
                     if (scope.lookup_global(name_raw).?.object) {
                         try scope.push_instr(.{ .load_global_obj = .{
@@ -2238,7 +2372,9 @@ pub const Compiler = struct {
         const tmp = scope.get_temp().?;
         defer scope.drop_temp();
         for (construct.fields.?, 0..) |field, i| {
-            _ = try self.generate(field.value.?, scope, tmp, null);
+            var moved = try self.generate(field.value.?, scope, tmp, null);
+            if (moved != null)
+                @panic("Moving here is not handled");
 
             const payload: StructAccess = .{
                 .reg = tmp,
@@ -2267,7 +2403,7 @@ pub const Compiler = struct {
                 LitKind.Kind => @panic("Not implimented"),
                 LitKind.Object => field_copy = .{ .set_struct_field_obj = payload },
                 LitKind.Custom => {
-                    const moved = try self.generate(field.value.?, scope, tmp, null);
+                    moved = try self.generate(field.value.?, scope, tmp, null);
                     if (moved != null)
                         @panic("Moving here is not handled");
                     field_copy = .{ .set_struct_field_obj = payload };

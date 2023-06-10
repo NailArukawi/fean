@@ -5,10 +5,13 @@ const Heap = @import("../mod.zig").Heap;
 const Ref = @import("../mod.zig").Ref;
 
 const Item = @import("item.zig").Item;
+const Methods = @import("function.zig").Methods;
 
 pub const DEFAULT_DICT_SIZE: usize = 64;
 pub const DICT_LOAD_CAPACITY: f32 = 0.75;
 pub const DICT_GROW_FACTOR: f32 = 2;
+
+const DEBUG_DICT = false;
 
 pub const DictEntry = struct {
     key: ?Item,
@@ -26,10 +29,10 @@ pub const Dict = struct {
     heap: *Heap,
 
     pub fn create(heap: *Heap, size: usize, hash_fn: *const fn (Item) u64, eq_fn: *const fn (Item, Item) bool) !*Ref {
-        var result = try heap.alloc_object(@sizeOf(@This()));
+        var result = try heap.alloc(@sizeOf(@This()) + @sizeOf(?*Methods));
         var items = try heap.alloc(@sizeOf(DictEntry) * size);
 
-        var this = result.item.resolve(*@This());
+        var this = result.object().body(@This());
         this.* = @This(){
             .hash_fn = hash_fn,
             .eq_fn = eq_fn,
@@ -49,7 +52,7 @@ pub const Dict = struct {
             i += 1;
         }
 
-        return result.obj;
+        return result;
     }
 
     pub fn default(heap: *Heap, hash_fn: *const fn (Item) u64, eq_fn: *const fn (Item, Item) bool) !*Ref {
@@ -57,6 +60,7 @@ pub const Dict = struct {
     }
 
     pub fn set(self: *@This(), key: Item, value: Item) !bool {
+        if (DEBUG_DICT) std.debug.print("Dict.set(\"{s}\")\n", .{key.text().as_slice()});
         const max_load = @intToFloat(f32, self.capacity) * DICT_LOAD_CAPACITY;
         if (self.count + 1 > @floatToInt(usize, max_load)) {
             try self.grow();
@@ -143,6 +147,7 @@ pub const Dict = struct {
     }
 
     pub fn get(self: *@This(), key: Item) ?Item {
+        if (DEBUG_DICT) std.debug.print("Dict.get(\"{s}\")\n", .{key.text().as_slice()});
         const result = self.lookup(key);
         if (result.key == null) {
             return null;
