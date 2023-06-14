@@ -617,7 +617,7 @@ pub const Compiler = struct {
                 // don't emit the irblock into parent ir.
                 var detatch = false;
                 var old_depth: usize = self.depth;
-                if (extra != null and extra.?.extra() == .detach) detatch = true;
+                if (extra != null and extra.?.kind() == .extra and extra.?.extra() == .detach) detatch = true;
 
                 // todo make sure this is ok
                 var to_inline = false; //= scope != .head;
@@ -647,15 +647,26 @@ pub const Compiler = struct {
                     }
                 }
 
+                var passalong_extra: ?Address = null;
+                if (extra) |e| {
+                    switch (e.kind()) {
+                        .impl_target => passalong_extra = e,
+                        else => {},
+                    }
+                }
+
                 for (s.statments.?) |stmnt|
-                    _ = try self.generate(stmnt, block, null, null);
+                    _ = try self.generate(stmnt, block, null, passalong_extra);
 
                 switch (detatch) {
                     true => return Address.new_raw(@ptrToInt(block.block)),
                     false => try scope.push_instr(Instr{ .block = block.block }),
                 }
             },
-            .impl => {
+            .impl => |*i| {
+                const impl_extra = Address.new_impl_target(i.this.?.resolved);
+
+                _ = try self.generate(i.body, scope, null, impl_extra);
                 unreachable;
             },
             .structure => |*s| {
@@ -683,14 +694,14 @@ pub const Compiler = struct {
             },
             .variable => {
                 switch (scope.is_head()) {
-                    true => try self.generate_global_variable(node, scope),
-                    false => try self.generate_local_variable(node, scope),
+                    true => try self.generate_global_variable(node, scope, extra),
+                    false => try self.generate_local_variable(node, scope, extra),
                 }
             },
             .constant => {
                 switch (scope.is_head()) {
-                    true => try self.generate_global_constant(node, scope),
-                    false => try self.generate_local_constant(node, scope),
+                    true => try self.generate_global_constant(node, scope, extra),
+                    false => try self.generate_local_constant(node, scope, extra),
                 }
             },
             .assignment => try self.generate_assignment(node, scope),
@@ -767,8 +778,20 @@ pub const Compiler = struct {
             },
             .function => |func| {
                 switch (func.is_extern) {
-                    true => try self.generate_extern_function(node, scope, result.?),
-                    false => try self.generate_internal_function(node, scope, result.?),
+                    true => {
+                        if (extra != null and extra.?.kind() == .impl_target) {
+                            @panic("No external methods yet.");
+                        } else {
+                            try self.generate_extern_function(node, scope, result.?);
+                        }
+                    },
+                    false => {
+                        if (extra != null and extra.?.kind() == .impl_target) {
+                            @panic("No internal methods yet.");
+                        } else {
+                            try self.generate_internal_function(node, scope, result.?);
+                        }
+                    },
                 }
             },
             .conditional_if => try self.generate_conditional_if(node, scope),
@@ -1031,7 +1054,7 @@ pub const Compiler = struct {
         return null;
     }
 
-    fn generate_global_variable(self: *@This(), node: *Node, scope: Scope) !void {
+    fn generate_global_variable(self: *@This(), node: *Node, scope: Scope, extra: ?Address) !void {
         const variable = node.variable;
 
         if (variable.value != null) {
@@ -1053,7 +1076,7 @@ pub const Compiler = struct {
             // the value we want to put in the global variable
             var tmp = scope.get_temp().?;
             var tmp_moved = false;
-            var gen_result = try self.generate(variable.value.?, scope, tmp, null);
+            var gen_result = try self.generate(variable.value.?, scope, tmp, extra);
             defer {
                 if (!tmp_moved) {
                     scope.drop_temp();
@@ -1081,7 +1104,7 @@ pub const Compiler = struct {
         });
     }
 
-    fn generate_global_constant(self: *@This(), node: *Node, scope: Scope) !void {
+    fn generate_global_constant(self: *@This(), node: *Node, scope: Scope, extra: ?Address) !void {
         const constant = node.constant;
 
         var obj = try self.copy_text(constant.name);
@@ -1102,7 +1125,7 @@ pub const Compiler = struct {
         // the value we want to put in the global variable
         var tmp = scope.get_temp().?;
         var tmp_moved = false;
-        var gen_result = try self.generate(constant.value, scope, tmp, null);
+        var gen_result = try self.generate(constant.value, scope, tmp, extra);
         defer if (!tmp_moved) scope.drop_temp();
 
         if (gen_result != null) {
@@ -1125,7 +1148,7 @@ pub const Compiler = struct {
         });
     }
 
-    fn generate_local_variable(self: *@This(), node: *Node, scope: Scope) !void {
+    fn generate_local_variable(self: *@This(), node: *Node, scope: Scope, extra: ?Address) !void {
         const variable = node.variable;
         const register = scope.get_reg().?;
 
@@ -1136,7 +1159,7 @@ pub const Compiler = struct {
         symbol.depth = self.depth;
 
         if (variable.value != null)
-            _ = try self.generate(variable.value.?, scope, register, null);
+            _ = try self.generate(variable.value.?, scope, register, extra);
     }
 
     fn generate_head_constant(self: *@This(), node: *Node, head: *IR) !void {
@@ -1178,7 +1201,7 @@ pub const Compiler = struct {
         });
     }
 
-    fn generate_local_constant(self: *@This(), node: *Node, scope: Scope) !void {
+    fn generate_local_constant(self: *@This(), node: *Node, scope: Scope, extra: ?Address) !void {
         const constant = node.constant;
         const register = scope.get_reg().?;
 
@@ -1188,7 +1211,7 @@ pub const Compiler = struct {
         symbol.binding = register.register();
         symbol.depth = self.depth;
 
-        _ = try self.generate(constant.value, scope, register, null);
+        _ = try self.generate(constant.value, scope, register, extra);
     }
     fn generate_assignment(self: *@This(), node: *Node, scope: Scope) !void {
         const assignment = node.assignment;
@@ -1551,7 +1574,6 @@ pub const Compiler = struct {
         const lit = try self.push_literal(Item{ .object = object }, .InternalFn);
 
         // todo params
-
         try scope.push_instr(.{ .fn_to_assemble = .{
             .result = result,
             .memory = body,
@@ -1675,7 +1697,6 @@ pub const Compiler = struct {
             },
             .identifier => |name_raw| {
                 const symbol = scope.lookup_symbol(name_raw);
-
                 if (symbol.?.global) {
                     const name = try self.copy_text(name_raw);
                     const name_lit = try self.push_literal(.{ .object = name }, .Text);

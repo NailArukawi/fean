@@ -3,6 +3,7 @@ const std = @import("std");
 const mod = @import("mod.zig");
 const IRBlock = mod.IRBlock;
 const Symbol = mod.Symbol;
+const Kind = mod.Kind;
 const Function = @import("../vm/mod.zig").Function;
 
 pub const AddressKind = enum(u8) {
@@ -14,6 +15,7 @@ pub const AddressKind = enum(u8) {
     temporary,
     pair,
     field,
+    impl_target,
 
     extra,
 };
@@ -68,9 +70,16 @@ pub const Address = struct {
             .inner = @intCast(usize, id) | (@intCast(usize, @enumToInt(AddressKind.pair)) << 56),
         };
     }
+
     pub inline fn new_field(address: u56) @This() {
         return @This(){
             .inner = @intCast(usize, address) | (@intCast(usize, @enumToInt(AddressKind.field)) << 56),
+        };
+    }
+
+    pub inline fn new_impl_target(address: Kind) @This() {
+        return @This(){
+            .inner = @ptrToInt(address) | (@intCast(usize, @enumToInt(AddressKind.impl_target)) << 56),
         };
     }
 
@@ -117,6 +126,10 @@ pub const Address = struct {
 
     pub inline fn field(self: @This()) u56 {
         return @truncate(u56, self.inner);
+    }
+
+    pub inline fn impl_target(self: @This()) *Kind {
+        return @intToPtr(*Kind, self.inner ^ (0xFFFFFFFFFFFFFF));
     }
 
     pub inline fn extra(self: @This()) Extra {
@@ -344,6 +357,17 @@ pub const Instr = union(enum) {
     // meta
     block: *IRBlock,
     destination: Address,
+    method_to_assemble: struct {
+        // callee object
+        result: Address,
+
+        // function objects
+        memory: *Function,
+        lit: Address,
+        // block is an raw adress
+        block: ?Address,
+        self: Address,
+    },
     fn_to_assemble: struct {
         // callee object
         result: Address,

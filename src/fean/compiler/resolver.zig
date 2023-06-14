@@ -23,10 +23,17 @@ const FieldOrName = mod.parser.FieldOrName;
 const Stack = @import("../stack.zig").Stack;
 const Allocator = std.mem.Allocator;
 
+const KIND_UNSET_SIZE = mod.KIND_UNSET_SIZE;
+
 const Scope = struct {
     parent: ?*@This(),
     symbols: ?*SymbolTable,
     kinds: ?*KindTable,
+
+    pub inline fn into(self: *const @This(), scope: *Node) void {
+        scope.scope.kinds = self.kinds;
+        scope.scope.symbols = self.symbols;
+    }
 
     pub fn lookup_symbol(self: *@This(), name: []const u8) ?Symbol {
         if (self.symbols == null and self.parent == null) {
@@ -64,6 +71,19 @@ const Scope = struct {
         return result;
     }
 
+    pub fn install_symbolkind(self: *@This(), name: []const u8, kind: SymbolKind, allocator: Allocator) !Symbol {
+        const size = switch (kind) {
+            .resolved => |r| r.size,
+            .unresolved => KIND_UNSET_SIZE,
+        };
+
+        if (self.symbols == null) {
+            self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
+            return self.symbols.?;
+        }
+        return self.symbols.?.install(allocator, name, kind, size);
+    }
+
     pub fn install_symbol(self: *@This(), name: []const u8, kind: ?SymbolKind, size: usize, allocator: Allocator) !Symbol {
         if (self.symbols == null) {
             self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
@@ -77,6 +97,14 @@ const Scope = struct {
     }
 
     pub fn install_kind_fn(self: *@This(), name: []const u8, fields: ?*FieldList, allocator: Allocator) !Kind {
+        if (self.kinds == null) {
+            self.kinds = try KindTable.create(allocator);
+            var kind: Kind = self.kinds.?;
+            kind.fields = fields;
+            kind.name = name;
+            kind.size = mod.KIND_FN_SIZE;
+            kind.meta.is_fn = true;
+        }
         return self.kinds.?.install_fn(name, fields, allocator);
     }
 
@@ -123,11 +151,14 @@ pub const Resolver = struct {
         try resolver.struct_resolve();
         for (ast.head) |node| _ = try resolver.kind_visit(node, &head);
         for (ast.head) |node| _ = try resolver.symbol_visit(node, &head);
+
+        ast.kinds = head.kinds;
+        ast.symbols = head.symbols;
     }
 
     fn expand_visit(self: *@This(), node: *Node, scope: *Scope) !void {
         switch (node.*) {
-            .scope => |s| {
+            .scope => |*s| {
                 if (s.statments == null)
                     return;
 
@@ -140,9 +171,22 @@ pub const Resolver = struct {
                 for (s.statments.?) |scope_node| {
                     try self.expand_visit(scope_node, &head);
                 }
+
+                head.into(node);
             },
             .impl => |*i| {
-                _ = i;
+                var head = Scope{
+                    .parent = scope,
+                    .kinds = i.body.scope.kinds,
+                    .symbols = i.body.scope.symbols,
+                };
+
+                for (i.body.scope.statments.?) |n| {
+                    try impl_dive(node, n, &head, self.allocator);
+                    _ = try self.kind_visit(n, &head);
+                }
+
+                head.into(i.body);
             },
             .structure => |*s| {
                 if (scope.lookup_kind(s.name) != null)
@@ -208,8 +252,7 @@ pub const Resolver = struct {
                         param_symbol.*.binding = @intCast(u10, i);
                     }
 
-                    func.body.body.scope.symbols = fn_symbol.symbols;
-                    func.body.body.scope.kinds = fn_symbol.kinds;
+                    fn_symbol.into(func.body.body);
                 }
 
                 if (func.is_extern) {
@@ -287,15 +330,23 @@ pub const Resolver = struct {
                     .symbols = s.symbols,
                 };
 
-                for (s.statments.?) |scope_node| {
+                for (s.statments.?) |scope_node|
                     _ = try self.kind_visit(scope_node, &head);
-                }
+
+                head.into(node);
 
                 // todo maybe allow a scope to be a kind
                 return null;
             },
-            .impl => {
-                unreachable;
+            .impl => |*i| {
+                switch (i.this.?) {
+                    .unresolved => |n| i.this = SymbolKind{ .resolved = scope.lookup_kind(n).? },
+                    .resolved => {},
+                }
+
+                _ = try self.kind_visit(i.body, scope);
+
+                return null;
             },
             .structure => {
                 return null;
@@ -378,9 +429,8 @@ pub const Resolver = struct {
                 const is_extern = function.is_extern;
 
                 // resolve kinds in body
-                if (!is_extern) {
+                if (!is_extern)
                     _ = try self.kind_visit(function.body.body, scope);
-                }
 
                 // resolve fn kind name
                 var kind_name: []u8 = &self.buffer;
@@ -461,16 +511,14 @@ pub const Resolver = struct {
 
                     const new_kind = try install_fn_kind(self, scope, result, function.params, return_kind, is_extern);
                     return SymbolKind{ .resolved = new_kind };
-                } else {
-                    return SymbolKind{ .resolved = result_kind.? };
-                }
+                } else return SymbolKind{ .resolved = result_kind.? };
             },
             .conditional_if => |cif| {
                 _ = try self.kind_visit(cif.condition, scope);
                 _ = try self.kind_visit(cif.if_then, scope);
-                if (cif.if_else != null) {
+                if (cif.if_else != null)
                     _ = try self.kind_visit(cif.if_else.?, scope);
-                }
+
                 return null;
             },
             .conditional_while => |cw| {
@@ -510,11 +558,12 @@ pub const Resolver = struct {
                 return null;
             },
             .get => |*g| {
-                const accessing = (try self.kind_visit(g.object, scope)).?;
+                const accessing = (try self.kind_visit(g.object, scope)) orelse return null;
                 if (g.kind == null)
                     g.kind = accessing;
-                if (g.field == .unresolved)
+                if (g.field == .unresolved and accessing == .resolved) {
                     g.field = FieldOrName{ .resolved = accessing.resolved.lookup_field(g.field.unresolved) orelse return null };
+                }
 
                 return g.kind;
             },
@@ -522,7 +571,7 @@ pub const Resolver = struct {
                 const accessing = (try self.kind_visit(s.object, scope)).?;
                 if (s.kind == null)
                     s.kind = accessing;
-                if (s.field == .unresolved)
+                if (s.field == .unresolved and accessing == .resolved)
                     s.field = FieldOrName{ .resolved = accessing.resolved.lookup_field(s.field.unresolved) orelse return null };
 
                 _ = try self.kind_visit(s.value, scope);
@@ -546,7 +595,12 @@ pub const Resolver = struct {
                     .text => unreachable,
                     .identifier => |name| {
                         // todo make it smarter about typing
-                        const symbol = scope.lookup_symbol(name) orelse return null;
+                        var symbol = scope.lookup_symbol(name) orelse return null;
+
+                        if (symbol.kind != null and symbol.kind.? == .unresolved) {
+                            const symbol_resolved_kind = scope.lookup_kind(symbol.kind.?.unresolved) orelse return symbol.kind;
+                            symbol.kind = SymbolKind{ .resolved = symbol_resolved_kind };
+                        }
 
                         return symbol.kind;
                     },
@@ -572,22 +626,19 @@ pub const Resolver = struct {
     fn symbol_visit(self: *@This(), node: *Node, scope: *Scope) !void {
         switch (node.*) {
             .scope => |s| {
-                if (s.statments == null) {
-                    return;
-                }
-
                 var head = Scope{
                     .parent = scope,
                     .kinds = s.kinds,
                     .symbols = s.symbols,
                 };
 
-                for (s.statments.?) |scope_node| {
+                for (s.statments.?) |scope_node|
                     try self.symbol_visit(scope_node, &head);
-                }
+
+                head.into(node);
             },
-            .impl => |i| {
-                _ = i;
+            .impl => |*i| {
+                try self.symbol_visit(i.body, scope);
             },
             .structure => |s| {
                 _ = s;
@@ -595,41 +646,18 @@ pub const Resolver = struct {
             .construct => |c| {
                 _ = c;
             },
-            .variable => |v| {
-                switch (v.kind.?) {
-                    .resolved => return,
-                    .unresolved => |name| {
-                        const kind = scope.lookup_kind(name);
+            .variable => |*v| {
+                if (v.symbol == null)
+                    v.symbol = scope.lookup_symbol(v.name) orelse try scope.install_symbol(v.name, v.kind, 42096, self.allocator);
 
-                        if (kind == null) {
-                            @panic("Kind not found!");
-                        }
-
-                        node.*.variable.kind = SymbolKind{ .resolved = kind.? };
-
-                        // todo better
-                        var symbol = node.*.variable.symbol orelse scope.lookup_symbol(name).?;
-                        symbol.kind.? = SymbolKind{ .resolved = kind.? };
-                    },
-                }
+                if (v.value) |value|
+                    try self.symbol_visit(value, scope);
             },
-            .constant => |c| {
-                switch (c.kind.?) {
-                    .resolved => return,
-                    .unresolved => |name| {
-                        const kind = scope.lookup_kind(name);
+            .constant => |*c| {
+                if (c.symbol == null)
+                    c.symbol = scope.lookup_symbol(c.name) orelse try scope.install_symbol(c.name, c.kind, 42096, self.allocator);
 
-                        if (kind == null) {
-                            @panic("Kind not found!");
-                        }
-
-                        node.*.constant.kind = SymbolKind{ .resolved = kind.? };
-
-                        // todo better
-                        var symbol = node.*.constant.symbol orelse scope.lookup_symbol(name).?;
-                        symbol.kind.? = SymbolKind{ .resolved = kind.? };
-                    },
-                }
+                try self.symbol_visit(c.value, scope);
             },
             .assignment => |a| {
                 try self.symbol_visit(a.value, scope);
@@ -641,7 +669,18 @@ pub const Resolver = struct {
             },
             .function => |func| {
                 if (!func.is_extern) {
+                    var func_scope = Scope{
+                        .parent = scope,
+                        .kinds = func.body.body.scope.kinds,
+                        .symbols = func.body.body.scope.symbols,
+                    };
+
+                    for (func.params) |*param|
+                        param.*.symbol = try func_scope.install_symbol(param.name, param.kind, 42069, self.allocator);
+
                     try self.symbol_visit(func.body.body, scope);
+
+                    func_scope.into(func.body.body);
                 }
             },
             .conditional_if => |cif| {
@@ -666,9 +705,8 @@ pub const Resolver = struct {
                 // todo
                 return;
             },
-            .get => {
-                // todo
-                return;
+            .get => |*g| {
+                try self.symbol_visit(g.object, scope);
             },
             .set => {
                 // todo
@@ -880,19 +918,19 @@ fn install_fn_kind(self: *Resolver, scope: *Scope, name: []const u8, params: []P
     var cloned_name = try allocator.alloc(u8, name.len);
     @memcpy(cloned_name, name);
 
-    var kind: Kind = undefined;
-    if (is_extern) {
-        kind = try scope.install_kind_extern_fn(cloned_name, null, allocator);
-    } else {
-        kind = try scope.install_kind_fn(cloned_name, null, allocator);
-    }
+    var kind: Kind = switch (is_extern) {
+        true => try scope.install_kind_extern_fn(cloned_name, null, allocator),
+        false => try scope.install_kind_fn(cloned_name, null, allocator),
+    };
 
     _ = try kind.install_field("return", result, allocator);
     for (params) |param| {
         var param_kind: Kind = undefined;
         switch (param.kind) {
             .resolved => |k| param_kind = k,
-            .unresolved => |n| param_kind = scope.lookup_kind(n).?,
+            .unresolved => |n| {
+                param_kind = scope.lookup_kind(n) orelse std.debug.panic("ree: {s}", .{n});
+            },
         }
 
         _ = try kind.install_field("", param_kind, allocator);
@@ -911,8 +949,67 @@ inline fn unpack(node: *Node, kind: ?SymbolKind) ?SymbolKind {
             cursor = cursor.get.object;
         }
 
-        return SymbolKind{ .resolved = cursor.get.field.resolved.kind };
+        const field = cursor.get.field;
+        switch (field) {
+            .resolved => |r| {
+                return SymbolKind{ .resolved = r.kind };
+            },
+            .unresolved => {
+                return kind;
+            },
+        }
     }
 
     return kind;
+}
+
+fn impl_dive(impl_node: *Node, node: *Node, scope: *Scope, allocator: Allocator) !void {
+    var impl = impl_node.impl;
+    switch (node.*) {
+        .function => |*f| {
+            var is_self = switch (f.params[0].kind) {
+                .unresolved => |name| std.mem.eql(u8, name, "Self"),
+                .resolved => false,
+            };
+
+            if (is_self) {
+                var head = Scope{
+                    .parent = scope,
+                    .kinds = f.body.body.scope.kinds,
+                    .symbols = f.body.body.scope.symbols,
+                };
+
+                var self_symbol = head.lookup_symbol("self");
+                if (self_symbol == null) {
+                    self_symbol = try head.install_symbolkind("self", impl_node.impl.this.?, allocator);
+                }
+
+                f.params[0].symbol = self_symbol;
+
+                if (f.params[0].kind == .unresolved) {
+                    switch (impl.this.?) {
+                        .unresolved => |u| {
+                            const self = head.lookup_kind(u);
+                            if (self) |self_sym| {
+                                f.params[0].kind = SymbolKind{ .resolved = self_sym };
+                            } else {
+                                f.params[0].kind = impl.this.?;
+                            }
+                        },
+                        .resolved => |r| f.params[0].kind = SymbolKind{ .resolved = r },
+                    }
+                }
+
+                head.into(f.body.body);
+            }
+        },
+        .constant => |c| {
+            try impl_dive(impl_node, c.value, scope, allocator);
+        },
+        .variable => |v| {
+            var value = v.value orelse return;
+            try impl_dive(impl_node, value, scope, allocator);
+        },
+        else => |n| std.debug.print("impl_dive: {s}\n", .{@tagName(n)}),
+    }
 }

@@ -2,25 +2,16 @@ print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
 heap_collect : ExternFn : extern fn() -> void;
 heap_debug : ExternFn : extern fn() -> void;
 
-struct Thing {
+struct Square {
     x: i64,
     y: i64
 }
 
-// this should not be collected leaving us some bytes in rest blocks.
-z : Thing = Thing { .x = 0, .y = 1 };
-zz : Thing = Thing { .x = 0, .y = 1 };
-zzz : Thing = Thing { .x = 0, .y = 1 };
-
-i : i64 = 0;
-while (i < 32){
-    // this should be collected.
-    ree : Thing = Thing { .x = 0, .y = 1 };
-    
-    print_i64(i);
-    i++;
+impl Square {
+    area : Fn : fn(Self) -> i64 {
+        return self.x * self.y;
+    }
 }
 
-heap_debug();
-heap_collect();
-heap_debug();
+ree : Square = Square { .x = 8, .y = 16};
+//ree.area();

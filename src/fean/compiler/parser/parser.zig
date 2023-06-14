@@ -706,13 +706,13 @@ pub const Parser = struct {
                 const args = self.arguments(scope);
                 self.consume_kind(.paren_right, "Expected call arguments to end with a )");
 
-                const callee = result.literal.data.identifier;
+                const callee = result;
 
                 result = self.allocator.create(Node) catch unreachable;
                 result.* = Node{
                     .call = .{
                         // todo mem leak
-                        .name = callee,
+                        .name = callee.literal.data.identifier,
                         .symbol = null,
                         .arguments = args,
                     },
