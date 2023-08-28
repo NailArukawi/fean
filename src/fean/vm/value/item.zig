@@ -20,7 +20,7 @@ pub const Item = extern union {
     // todo make nil a null type
     nil: u8,
     object: *Ref,
-    kind: Kind,
+    kind: *Kind,
 
     // raw data,
     any: ?*anyopaque,

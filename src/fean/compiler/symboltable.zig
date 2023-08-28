@@ -1,73 +1,86 @@
-// a rather direct implimentaition of http://silcnitc.github.io/Data_Structures.html
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const Kind = @import("kindtable.zig").Kind;
 
 pub const SymbolKind = union(enum) {
-    resolved: Kind,
+    none,
+    resolved: *Kind,
     unresolved: []const u8,
 };
 
-pub const Symbol = *SymbolTable;
 pub const SymbolTable = struct {
+    head: ?*Symbol = null,
+    tail: ?*Symbol = null,
+
+    pub fn create(allocator: Allocator) !*@This() {
+        var this = try allocator.create(@This());
+        this.* = .{};
+        return this;
+    }
+
+    pub fn destroy(this: *@This(), allocator: Allocator) void {
+        this.freeKinds(allocator);
+        allocator.free(this);
+    }
+
+    fn freeSymbols(this: *@This(), allocator: Allocator) void {
+        var next = this.head;
+        while (next != null) {
+            const too_clean = next.?;
+            next = too_clean.next;
+            allocator.free(too_clean);
+        }
+    }
+
+    pub fn lookup(this: *@This(), name: []const u8) ?*Symbol {
+        var next = this.head;
+        while (next != null) {
+            if (std.mem.eql(u8, name, next.?.name))
+                return next;
+
+            next = next.?.next;
+        }
+
+        return null;
+    }
+
+    pub fn install(this: *@This(), allocator: Allocator, name: []const u8, kind: SymbolKind, size: usize) !*Symbol {
+        var installee = try Symbol.create(allocator, name, kind, size);
+
+        if (this.head == null) {
+            this.head = installee;
+            this.tail = installee;
+        } else {
+            this.tail.?.next = installee;
+            this.tail = installee;
+        }
+
+        return installee;
+    }
+};
+
+pub const Symbol = struct {
     name: []const u8,
-    kind: ?SymbolKind,
+    kind: SymbolKind = .none,
     size: usize,
     global: bool = false,
     param: bool = false,
     binding: u10 = 0,
     depth: usize = 0,
-    next: ?*@This(),
+    next: ?*@This() = null,
 
-    fn create(allocator: Allocator) !*@This() {
-        var result = try allocator.create(@This());
-
-        result.size = 0;
-        result.next = null;
-        result.kind = null;
-
-        return result;
+    pub fn create(allocator: Allocator, name: []const u8, kind: SymbolKind, size: usize) !*@This() {
+        var this = try allocator.create(@This());
+        this.* = .{ .name = name, .kind = kind, .size = size };
+        return this;
     }
 
-    pub fn lookup(self: *@This(), name: []const u8) ?*@This() {
-        var cursor: ?Symbol = self;
-        while (cursor != null) : (cursor = cursor.?.next) {
-            if (std.mem.eql(u8, cursor.?.name, name)) {
-                return cursor;
-            }
-        }
-        return null;
+    pub fn destroy(this: *@This(), allocator: Allocator) void {
+        allocator.free(this);
     }
 
-    pub fn install(self: *@This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !*@This() {
-        const installee = try allocator.create(@This());
-        installee.name = name;
-        installee.kind = kind;
-        installee.size = size;
-        installee.next = self.next;
-        installee.global = false;
-        installee.param = false;
-        installee.binding = 0;
-        installee.depth = 0;
-        self.next = installee;
-        return installee;
-    }
-
-    pub fn create_head(allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !*@This() {
-        const installee = try allocator.create(@This());
-        installee.name = name;
-        installee.kind = kind;
-        installee.size = size;
-        installee.next = null;
-        installee.global = false;
-        installee.param = false;
-        installee.binding = 0;
-        installee.depth = 0;
-        return installee;
-    }
-
-    pub fn stack_binding(self: *@This()) usize {
-        return (self.depth * 1024) + self.binding;
+    pub fn stack_binding(this: *@This()) usize {
+        return (this.depth * 1024) + this.binding;
     }
 };

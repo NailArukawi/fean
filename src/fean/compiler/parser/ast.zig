@@ -13,20 +13,20 @@ const Kind = @import("../kindtable.zig").Kind;
 
 pub const AST = struct {
     head: []*Node,
-    symbols: ?*SymbolTable,
-    kinds: ?*KindTable,
+    symbols: *SymbolTable,
+    kinds: *KindTable,
 };
 
 pub const Parameter = struct {
     name: []const u8,
-    symbol: ?Symbol,
+    symbol: ?*Symbol,
     kind: SymbolKind,
 };
 
 pub const Field = struct {
     name: []const u8,
-    symbol: ?Symbol,
-    kind: ?SymbolKind,
+    symbol: ?*Symbol,
+    kind: SymbolKind,
     value: ?*Node,
 };
 
@@ -36,7 +36,7 @@ pub const FunctionBody = union {
 };
 
 pub const FieldOrName = union(enum) {
-    resolved: @import("../kindtable.zig").Field,
+    resolved: *@import("../kindtable.zig").Field,
     unresolved: []const u8,
 };
 
@@ -45,24 +45,29 @@ pub const Node = union(enum) {
         //span: Span,
         parent: ?*Node,
         statments: ?[]*Node,
-        symbols: ?*SymbolTable,
-        kinds: ?*KindTable,
+        symbols: *SymbolTable,
+        kinds: *KindTable,
 
-        pub fn lookup_symbol(self: *@This(), name: []const u8) ?Symbol {
-            if (self.symbols == null) {
-                return null;
-            }
-            return self.symbols.?.lookup(name);
+        pub fn create(allocator: Allocator) !*@This() {
+            var this = try allocator.create(@This());
+            this = .{};
+            this.symbols = try SymbolKind.create(allocator);
+            this.kinds = try KindTable.create(allocator);
+            return this;
         }
 
-        pub fn install_symbol(self: *@This(), to_insert: *Node, allocator: Allocator) !?Symbol {
+        pub fn lookupSymbol(this: *@This(), name: []const u8) ?*Symbol {
+            return this.symbols.lookup(name);
+        }
+
+        pub fn installSymbol(this: *@This(), insertee: *Node, allocator: Allocator) !?*Symbol {
             var name: []const u8 = "";
 
             // todo handle infered typing
-            var kind: ?SymbolKind = null;
+            var kind: SymbolKind = .none;
             var size: usize = 0;
 
-            switch (to_insert.*) {
+            switch (insertee.*) {
                 .variable => |v| {
                     name = v.name;
                     kind = v.kind;
@@ -80,41 +85,17 @@ pub const Node = union(enum) {
                 else => @panic("Tried to pass non variable/const Node into install_symbol()"),
             }
 
-            if (self.symbols == null) {
-                self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
-                self.symbols.?.binding = 0;
+            var result = try this.symbols.install(allocator, name, kind, size);
 
-                self.symbols.?.next = null;
-
-                if (self.parent == null) {
-                    self.symbols.?.global = true;
-                }
-
-                switch (to_insert.*) {
-                    .variable => {
-                        to_insert.variable.symbol = self.symbols;
-                    },
-                    .constant => {
-                        to_insert.constant.symbol = self.symbols;
-                    },
-                    else => unreachable,
-                }
-
-                return self.symbols;
-            }
-
-            var result = try self.symbols.?.install(allocator, name, kind, size);
-
-            if (self.parent == null) {
+            if (this.parent == null)
                 result.global = true;
-            }
 
-            switch (to_insert.*) {
+            switch (insertee.*) {
                 .variable => {
-                    to_insert.variable.symbol = result;
+                    insertee.variable.symbol = result;
                 },
                 .constant => {
-                    to_insert.constant.symbol = result;
+                    insertee.constant.symbol = result;
                 },
                 else => unreachable,
             }
@@ -122,66 +103,58 @@ pub const Node = union(enum) {
             return result;
         }
 
-        pub fn lookup_kind(self: *@This(), name: []const u8) ?Kind {
-            if ((self.kinds == null) and (self.parent == null)) {
-                return null;
-            }
-            if (self.kinds == null) {
-                return self.parent.?.lookup_kind(name);
-            }
+        pub fn lookupKind(this: *@This(), name: []const u8) ?*Kind {
+            var result = this.kinds.lookup(name);
+            if (result != null)
+                return result;
 
-            const result = self.kinds.?.lookup(name);
-            if (result == null and self.parent == null) {
+            if (this.parent == null or this.parent != .scope)
                 return null;
-            }
-            if (result == null) {
-                return self.parent.?.lookup_kind(name);
-            }
 
-            return result;
+            return this.parent.?.scope.lookupKind(name);
         }
     },
     structure: struct {
         //span: Span,
         name: []const u8,
-        symbol: ?Symbol,
-        this: ?Kind,
+        symbol: ?*Symbol,
+        this: ?*Kind,
         fields: ?[]Field,
     },
     impl: struct {
         //span: Span,
-        this: ?SymbolKind,
+        this: SymbolKind,
         body: *Node,
     },
     construct: struct {
         //span: Span,
-        kind: ?SymbolKind,
+        kind: SymbolKind,
         fields: ?[]Field,
     },
     variable: struct {
         //span: Span,
         name: []const u8,
-        symbol: ?Symbol,
-        kind: ?SymbolKind,
+        symbol: ?*Symbol,
+        kind: SymbolKind,
         value: ?*Node,
     },
     constant: struct {
         //span: Span,
         name: []const u8,
-        symbol: ?Symbol,
-        kind: ?SymbolKind,
+        symbol: ?*Symbol,
+        kind: SymbolKind,
         value: *Node,
     },
     assignment: struct {
         //span: Span,
         name: []const u8,
-        symbol: ?Symbol,
+        symbol: ?*Symbol,
         value: *Node,
     },
     function: struct {
         //span: Span,
         params: []Parameter,
-        result: ?SymbolKind,
+        result: SymbolKind,
         body: FunctionBody,
         is_extern: bool,
     },
@@ -203,7 +176,7 @@ pub const Node = union(enum) {
     },
     binary_expression: struct {
         //span: Span,
-        kind: ?SymbolKind,
+        kind: SymbolKind,
         lhs: *Node,
         op: Token,
         rhs: *Node,
@@ -217,19 +190,19 @@ pub const Node = union(enum) {
         //span: Span,
         //callee: *Node,
         name: []const u8,
-        symbol: ?Symbol,
+        symbol: ?*Symbol,
         arguments: ?[]*Node,
     },
     get: struct {
         //span: Span,
         field: FieldOrName,
-        kind: ?SymbolKind,
+        kind: SymbolKind,
         object: *Node,
     },
     set: struct {
         //span: Span,
         field: FieldOrName,
-        kind: ?SymbolKind,
+        kind: SymbolKind,
         object: *Node,
         value: *Node,
     },

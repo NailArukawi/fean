@@ -77,7 +77,7 @@ pub const Address = struct {
         };
     }
 
-    pub inline fn new_impl_target(address: Kind) @This() {
+    pub inline fn new_impl_target(address: *Kind) @This() {
         return @This(){
             .inner = @intFromPtr(address) | (@as(usize, @intCast(@intFromEnum(AddressKind.impl_target))) << 56),
         };

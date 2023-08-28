@@ -67,8 +67,8 @@ pub const Parser = struct {
             .scope = .{
                 .parent = null,
                 .statments = null,
-                .symbols = null,
-                .kinds = try KindTable.create_global(config.allocator),
+                .symbols = try SymbolTable.create(config.allocator),
+                .kinds = try KindTable.createGlobal(config.allocator),
             },
         };
 
@@ -81,7 +81,7 @@ pub const Parser = struct {
             .kinds = global_scope.scope.kinds,
         };
 
-        var sym: ?Symbol = ast.symbols;
+        var sym: ?*Symbol = ast.symbols.head;
         while (sym != null) {
             sym.?.global = true;
 
@@ -195,7 +195,7 @@ pub const Parser = struct {
     fn declaration_variable(self: *@This(), scope: *Node, infered: bool) *Node {
         const name = self.pop().?;
         self.consume_kind(.colon, "variable/constant missing trailing :");
-        var kind: ?SymbolKind = null;
+        var kind: SymbolKind = .none;
         if (!infered) {
             const kind_name = self.pop().?;
             kind = SymbolKind{ .unresolved = kind_name.data.identifier };
@@ -258,7 +258,7 @@ pub const Parser = struct {
             }
         }
         // todo deal with shadowing
-        _ = scope.scope.install_symbol(result, self.allocator) catch unreachable;
+        _ = scope.scope.installSymbol(result, self.allocator) catch unreachable;
 
         return result;
     }
@@ -314,7 +314,7 @@ pub const Parser = struct {
         self.consume_kind(.right_arrow, "fn to have a -> type after body");
         self.check_err(.identifier, "expected an identifier after ->");
         const kind_name = self.pop().?.data.identifier;
-        var result: ?SymbolKind = null;
+        var result: SymbolKind = .none;
         if (!std.mem.eql(u8, kind_name, "void")) {
             result = SymbolKind{ .unresolved = kind_name };
         }
@@ -474,8 +474,8 @@ pub const Parser = struct {
         block.* = Node{ .scope = .{
             .parent = scope,
             .statments = null,
-            .symbols = null,
-            .kinds = null,
+            .symbols = SymbolTable.create(self.allocator) catch unreachable,
+            .kinds = KindTable.create(self.allocator) catch unreachable,
         } };
 
         var stmnts = Stack(*Node).create(self.allocator, 16) catch unreachable;
@@ -570,11 +570,11 @@ pub const Parser = struct {
         if (is_short) {
             var result = self.allocator.create(Node) catch unreachable;
             var expanded = self.allocator.create(Node) catch unreachable;
-            expanded.* = Node{ .binary_expression = .{ .lhs = get, .op = short.?, .rhs = value, .kind = null } };
-            result.* = Node{ .set = .{ .field = field, .object = object, .kind = null, .value = expanded } };
+            expanded.* = Node{ .binary_expression = .{ .lhs = get, .op = short.?, .rhs = value, .kind = .none } };
+            result.* = Node{ .set = .{ .field = field, .object = object, .kind = .none, .value = expanded } };
             return result;
         } else {
-            get.* = Node{ .set = .{ .field = field, .object = object, .kind = null, .value = value } };
+            get.* = Node{ .set = .{ .field = field, .object = object, .kind = .none, .value = value } };
             return get;
         }
     }
@@ -611,7 +611,7 @@ pub const Parser = struct {
             this.* = Node{ .literal = identity };
 
             var expanded = self.allocator.create(Node) catch unreachable;
-            expanded.* = Node{ .binary_expression = .{ .lhs = this, .op = short.?, .rhs = value, .kind = null } };
+            expanded.* = Node{ .binary_expression = .{ .lhs = this, .op = short.?, .rhs = value, .kind = .none } };
             result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = expanded } };
         } else {
             result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = value } };
@@ -630,7 +630,7 @@ pub const Parser = struct {
             var rhs = self.comparison(scope);
 
             result = self.allocator.create(Node) catch unreachable;
-            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = null } };
+            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
         }
 
         return result;
@@ -646,7 +646,7 @@ pub const Parser = struct {
             var rhs = self.term(scope);
 
             result = self.allocator.create(Node) catch unreachable;
-            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = null } };
+            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
         }
 
         return result;
@@ -662,7 +662,7 @@ pub const Parser = struct {
             var rhs = self.factor(scope);
 
             result = self.allocator.create(Node) catch unreachable;
-            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = null } };
+            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
         }
 
         return result;
@@ -678,7 +678,7 @@ pub const Parser = struct {
             var rhs = self.unary(scope);
 
             result = self.allocator.create(Node) catch unreachable;
-            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = null } };
+            result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
         }
 
         return result;
@@ -727,7 +727,7 @@ pub const Parser = struct {
                     .get = .{
                         // todo mem leak
                         .field = FieldOrName{ .unresolved = name.data.identifier },
-                        .kind = null,
+                        .kind = .none,
                         .object = expr,
                     },
                 };
@@ -837,7 +837,7 @@ pub const Parser = struct {
             fields.push(Field{
                 .name = field_name.data.identifier,
                 .symbol = null,
-                .kind = null,
+                .kind = .none,
                 .value = field_value,
             }) catch unreachable;
 

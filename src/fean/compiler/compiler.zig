@@ -38,8 +38,8 @@ pub const IRBlock = struct {
     parent: Scope,
     body: Stack(Instr),
 
-    symbols: ?*SymbolTable,
-    kinds: ?*KindTable,
+    symbols: *SymbolTable,
+    kinds: *KindTable,
 
     // meta
     registers: u10 = 0,
@@ -48,7 +48,7 @@ pub const IRBlock = struct {
     inlining: bool = false,
     optimize: bool = true,
 
-    pub fn create(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable, kinds: ?*KindTable) !*@This() {
+    pub fn create(allocator: Allocator, parent: Scope, symbols: *SymbolTable, kinds: *KindTable) !*@This() {
         var result = try allocator.create(@This());
 
         result.* = @This(){
@@ -65,27 +65,16 @@ pub const IRBlock = struct {
         self.body.destroy();
     }
 
-    pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?Symbol {
-        if (self.symbols == null)
-            return self.parent.lookup_symbol(identifier);
-
-        return self.symbols.?.lookup(identifier) orelse self.parent.lookup_symbol(identifier);
+    pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?*Symbol {
+        return self.symbols.lookup(identifier) orelse self.parent.lookup_symbol(identifier);
     }
 
-    pub fn install_symbol(self: *@This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !Symbol {
-        if (self.symbols == null) {
-            self.symbols = try SymbolTable.create_head(allocator, name, kind, size);
-            return self.symbols.?;
-        }
-
-        return self.symbols.?.install(allocator, name, kind, size);
+    pub fn install_symbol(self: *@This(), allocator: Allocator, name: []const u8, kind: SymbolKind, size: usize) !*Symbol {
+        return self.symbols.install(allocator, name, kind, size);
     }
 
-    pub fn lookup_kind(self: *@This(), identifier: []const u8) ?Kind {
-        if (self.kinds == null)
-            return self.parent.lookup_kind(identifier);
-
-        return self.kinds.?.lookup(identifier);
+    pub fn lookup_kind(self: *@This(), identifier: []const u8) ?*Kind {
+        return self.kinds.lookup(identifier);
     }
 
     pub fn get_temp(self: *@This()) ?Address {
@@ -152,7 +141,7 @@ pub const IRBlock = struct {
 pub const Global = struct {
     value: Item,
     object: bool = false,
-    symbol: Symbol,
+    symbol: *Symbol,
 };
 
 pub const IR = struct {
@@ -193,18 +182,18 @@ pub const IR = struct {
         return null;
     }
 
-    pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?Symbol {
+    pub fn lookup_symbol(self: *@This(), identifier: []const u8) ?*Symbol {
         if (self.symbols == null)
             return null;
 
         return self.symbols.?.lookup(identifier);
     }
 
-    pub fn install_symbol(self: *@This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !Symbol {
+    pub fn install_symbol(self: *@This(), allocator: Allocator, name: []const u8, kind: SymbolKind, size: usize) !*Symbol {
         return self.symbols.?.install(allocator, name, kind, size);
     }
 
-    pub fn lookup_kind(self: *@This(), identifier: []const u8) ?Kind {
+    pub fn lookup_kind(self: *@This(), identifier: []const u8) ?*Kind {
         return self.kinds.lookup(identifier);
     }
 
@@ -403,7 +392,7 @@ pub const Scope = union(enum) {
         };
     }
 
-    pub fn create_block(allocator: Allocator, parent: Scope, symbols: ?*SymbolTable, kinds: ?*KindTable) !@This() {
+    pub fn create_block(allocator: Allocator, parent: Scope, symbols: *SymbolTable, kinds: *KindTable) !@This() {
         var block = try IRBlock.create(allocator, parent, symbols, kinds);
         return @This(){
             .block = block,
@@ -422,7 +411,7 @@ pub const Scope = union(enum) {
             .head => return 0,
             .block => |b| {
                 var count: u8 = 0;
-                var cursor = b.symbols;
+                var cursor = b.symbols.head;
                 while (cursor != null) {
                     if (cursor.?.param)
                         count += 1;
@@ -435,14 +424,14 @@ pub const Scope = union(enum) {
         }
     }
 
-    pub fn lookup_symbol(self: @This(), identifier: []const u8) ?Symbol {
+    pub fn lookup_symbol(self: @This(), identifier: []const u8) ?*Symbol {
         switch (self) {
             .head => |head| return head.lookup_symbol(identifier),
             .block => |block| return block.lookup_symbol(identifier),
         }
     }
 
-    pub fn install_symbol(self: @This(), allocator: Allocator, name: []const u8, kind: ?SymbolKind, size: usize) !Symbol {
+    pub fn install_symbol(self: @This(), allocator: Allocator, name: []const u8, kind: SymbolKind, size: usize) !*Symbol {
         switch (self) {
             .head => |head| return head.install_symbol(allocator, name, kind, size),
             .block => |block| return block.install_symbol(allocator, name, kind, size),
@@ -456,7 +445,7 @@ pub const Scope = union(enum) {
         }
     }
 
-    pub fn lookup_kind(self: @This(), identifier: []const u8) ?Kind {
+    pub fn lookup_kind(self: @This(), identifier: []const u8) ?*Kind {
         switch (self) {
             .head => |head| return head.lookup_kind(identifier),
             .block => |block| return block.lookup_kind(identifier),
@@ -592,15 +581,15 @@ pub const Compiler = struct {
     }
 
     fn compile_to_ir(self: *@This(), ast: AST, meta: *CompilerMeta) !*IR {
-        if (meta.kinds == null and ast.kinds != null) {
+        if (meta.kinds == null) {
             meta.kinds = ast.kinds;
         } else {
-            ast.kinds.?.last().next = meta.kinds.?;
-            meta.kinds.? = ast.kinds.?;
+            ast.kinds.tail.?.next = meta.kinds.?.head;
+            meta.kinds.? = ast.kinds;
         }
         var head = try Scope.create_head(self.allocator, meta);
         head.head.symbols = ast.symbols;
-        head.head.kinds = ast.kinds.?;
+        head.head.kinds = ast.kinds;
         head.head.optimize = self.optimize;
 
         var head_body = ast.head;
@@ -664,7 +653,7 @@ pub const Compiler = struct {
                 }
             },
             .impl => |*i| {
-                const impl_extra = Address.new_impl_target(i.this.?.resolved);
+                const impl_extra = Address.new_impl_target(i.this.resolved);
 
                 _ = try self.generate(i.body, scope, null, impl_extra);
                 unreachable;
@@ -679,13 +668,13 @@ pub const Compiler = struct {
                 return null;
             },
             .construct => |*c| {
-                if (c.kind.? == .unresolved) {
-                    const kind_lookup = scope.lookup_kind(c.kind.?.unresolved);
+                if (c.kind == .unresolved) {
+                    const kind_lookup = scope.lookup_kind(c.kind.unresolved);
                     // error no kind found for struct instansiation.
                     c.kind = .{ .resolved = kind_lookup.? };
                 }
 
-                const kind = self.lookup_literal(.{ .kind = c.kind.?.resolved }, .Kind).?;
+                const kind = self.lookup_literal(.{ .kind = c.kind.resolved }, .Kind).?;
                 try scope.push_instr(Instr{ .create_struct = .{ .result = result.?, .kind = kind } });
 
                 try self.generate_construct_fields(node, scope, result.?);
@@ -830,7 +819,8 @@ pub const Compiler = struct {
                     var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
-                    switch (symbol.kind.?) {
+                    switch (symbol.kind) {
+                        .none => @panic("Missing kind"),
                         .resolved => |k| kind_name = k.name,
                         .unresolved => |n| kind_name = n,
                     }
@@ -897,7 +887,8 @@ pub const Compiler = struct {
                     var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
-                    switch (symbol.kind.?) {
+                    switch (symbol.kind) {
+                        .none => @panic("Missing kind"),
                         .resolved => |k| kind_name = k.name,
                         .unresolved => |n| kind_name = n,
                     }
@@ -1392,7 +1383,8 @@ pub const Compiler = struct {
             rhs = gen_result.?;
         }
 
-        var kind = switch (exp.kind.?) {
+        var kind = switch (exp.kind) {
+            .none => @panic("Missing kind"),
             .unresolved => |k| k,
             .resolved => |s| s.name,
         };
@@ -1542,7 +1534,7 @@ pub const Compiler = struct {
         const body = object.object().function();
         body.* = Function{ .external = .{
             .arity = @as(u8, @intCast(function.params.len)),
-            .result = (function.result != null),
+            .result = (function.result != .none),
             .body = ptr.?,
         } };
 
@@ -1569,7 +1561,7 @@ pub const Compiler = struct {
         };
 
         body.*.internal.arity = @as(u8, @intCast(function.params.len));
-        body.*.internal.result = (function.result != null);
+        body.*.internal.result = (function.result != .none);
 
         const lit = try self.push_literal(Item{ .object = object }, .InternalFn);
 
@@ -1637,7 +1629,8 @@ pub const Compiler = struct {
         }
 
         var kind_name: []const u8 = "";
-        switch (fn_identity.kind.?) {
+        switch (fn_identity.kind) {
+            .none => @panic("Missing kind"),
             .resolved => |k| kind_name = k.name,
             .unresolved => |n| kind_name = n,
         }
@@ -1785,7 +1778,7 @@ pub const Compiler = struct {
                 .index = Address.new_field(@as(u56, @intCast(i))),
             };
 
-            const lk: LitKind = LitKind.from_kind(field.kind.?.resolved);
+            const lk: LitKind = LitKind.from_kind(field.kind.resolved);
             var field_copy: Instr = undefined;
             switch (lk) {
                 LitKind.u64 => field_copy = .{ .set_struct_field_u64 = payload },
@@ -1934,7 +1927,7 @@ const LitKind = enum {
     // objects that are not builtin
     Object,
     Custom,
-    pub fn from_kind(kind: Kind) @This() {
+    pub fn from_kind(kind: *Kind) @This() {
         if (std.mem.eql(u8, kind.name, "u64")) return LitKind.u64;
         if (std.mem.eql(u8, kind.name, "u32")) return LitKind.u32;
         if (std.mem.eql(u8, kind.name, "u16")) return LitKind.u16;
