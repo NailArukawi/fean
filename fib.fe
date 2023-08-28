@@ -21,6 +21,10 @@ print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
         i++;
     }
 
-    if (a < b) return b;
-    return a;
+    if (a < b) {
+        print_i64(b);
+        return 0;
+    }
+    print_i64(a);
+    return 0;
 }

@@ -11,7 +11,7 @@ pub fn main() !void {
 
     config.fn_lookup = lookup_fn;
 
-    var file = try std.fs.cwd().openFile("scratch.fe", std.fs.File.OpenFlags{});
+    var file = try std.fs.cwd().openFile("fib.fe", std.fs.File.OpenFlags{});
     defer file.close();
 
     var vm = try fean.Fean.create(file.reader(), config);
@@ -79,7 +79,7 @@ fn time(vm: *fean.vm.Thread, args: []fean.vm.Item, result: ?*fean.vm.Item) void 
         time_stamp = std.time.nanoTimestamp();
     } else {
         const delta = std.time.nanoTimestamp() - time_stamp.?;
-        result.?.* = fean.vm.Item.from(i64, @intCast(i64, delta));
+        result.?.* = fean.vm.Item.from(i64, @as(i64, @intCast(delta)));
         time_stamp = null;
     }
 }

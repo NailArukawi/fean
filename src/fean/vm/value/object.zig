@@ -10,13 +10,13 @@ pub const Object = struct {
     // body
 
     pub inline fn body(self: *@This(), comptime T: type) *T {
-        const body_int = @ptrToInt(self) + @sizeOf(?*Methods);
-        return @intToPtr(*T, body_int);
+        const body_int = @intFromPtr(self) + @sizeOf(?*Methods);
+        return @as(*T, @ptrFromInt(body_int));
     }
 
     pub inline fn body_array(self: *@This(), comptime T: type) [*]T {
-        const body_int = @ptrToInt(self) + @sizeOf(?*Methods);
-        return @intToPtr([*]T, body_int);
+        const body_int = @intFromPtr(self) + @sizeOf(?*Methods);
+        return @as([*]T, @ptrFromInt(body_int));
     }
 
     pub inline fn text(self: *@This()) *Text {

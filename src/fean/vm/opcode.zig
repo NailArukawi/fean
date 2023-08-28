@@ -156,19 +156,19 @@ pub const Opcode = extern struct {
     args: u32 align(1),
 
     pub inline fn a(self: @This()) u10 {
-        return @truncate(u10, self.args);
+        return @as(u10, @truncate(self.args));
     }
 
     pub inline fn b(self: @This()) u10 {
-        return @truncate(u10, self.args >> 10);
+        return @as(u10, @truncate(self.args >> 10));
     }
 
     pub inline fn c(self: @This()) u10 {
-        return @truncate(u10, self.args >> 20);
+        return @as(u10, @truncate(self.args >> 20));
     }
 
     pub inline fn d(self: @This()) u2 {
-        return @truncate(u2, self.args >> 30);
+        return @as(u2, @truncate(self.args >> 30));
     }
 
     pub inline fn x(self: @This()) u32 {
@@ -176,11 +176,11 @@ pub const Opcode = extern struct {
     }
 
     pub inline fn y(self: @This()) u22 {
-        return @truncate(u22, self.args >> 10);
+        return @as(u22, @truncate(self.args >> 10));
     }
 
     pub inline fn z(self: @This()) u12 {
-        return @truncate(u12, self.args >> 20);
+        return @as(u12, @truncate(self.args >> 20));
     }
 
     pub inline fn set_a(self: *@This(), val: u10) void {
@@ -188,15 +188,15 @@ pub const Opcode = extern struct {
     }
 
     pub inline fn set_b(self: *@This(), val: u10) void {
-        self.args = (self.args & 0xFFC03FFF) | (@intCast(u32, val) << 10);
+        self.args = (self.args & 0xFFC03FFF) | (@as(u32, @intCast(val)) << 10);
     }
 
     pub inline fn set_c(self: *@This(), val: u10) void {
-        self.args = (self.args & 0x3FFFFF) | (@intCast(u32, val) << 20);
+        self.args = (self.args & 0x3FFFFF) | (@as(u32, @intCast(val)) << 20);
     }
 
     pub inline fn set_d(self: *@This(), val: u2) void {
-        self.args = (self.args & 0x3FFFFFFF) | (@intCast(u32, val) << 30);
+        self.args = (self.args & 0x3FFFFFFF) | (@as(u32, @intCast(val)) << 30);
     }
 
     pub inline fn set_x(self: *@This(), val: u32) void {
@@ -204,11 +204,11 @@ pub const Opcode = extern struct {
     }
 
     pub inline fn set_y(self: *@This(), val: u22) void {
-        self.args = (self.args & 0x3FF) | (@intCast(u32, val) << 10);
+        self.args = (self.args & 0x3FF) | (@as(u32, @intCast(val)) << 10);
     }
 
     pub inline fn set_z(self: *@This(), val: u12) void {
-        self.args = (self.args & 0xFFFFF) | (@intCast(u32, val) << 20);
+        self.args = (self.args & 0xFFFFF) | (@as(u32, @intCast(val)) << 20);
     }
 
     pub inline fn new() @This() {

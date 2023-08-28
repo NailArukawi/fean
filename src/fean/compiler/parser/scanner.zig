@@ -78,7 +78,7 @@ pub fn Scanner(comptime Reader: type) type {
         }
 
         fn read(self: *@This()) !void {
-            var rest_count: u8 = @intCast(u8, self.end - self.start);
+            var rest_count: u8 = @as(u8, @intCast(self.end - self.start));
             std.debug.assert(self.buffer.len > rest_count);
 
             if (rest_count > 0)
@@ -87,7 +87,7 @@ pub fn Scanner(comptime Reader: type) type {
             self.start = 0;
             self.end = rest_count;
 
-            const read_count = @intCast(u32, try self.reader.read(self.buffer[rest_count..self.buffer.len]));
+            const read_count = @as(u32, @intCast(try self.reader.read(self.buffer[rest_count..self.buffer.len])));
 
             if (read_count == 0) {
                 self.buffer[self.end] = 0;
@@ -254,7 +254,7 @@ pub fn Scanner(comptime Reader: type) type {
             }
         }
 
-        inline fn handle_slash(self: *@This()) !Token {
+        inline fn handle_slash(self: *@This()) anyerror!Token {
             if (self.is_eos())
                 return Token.new_symbol(.slash, self.cursor);
 
@@ -359,7 +359,7 @@ pub fn Scanner(comptime Reader: type) type {
                 total_len += len;
 
                 if (len == 1) {
-                    try self.buffer.push(@intCast(u8, symbol));
+                    try self.buffer.push(@as(u8, @intCast(symbol)));
                 } else {
                     var bytes = [3]u8{ 0, 0, 0 };
                     _ = try uni.utf8Encode(symbol, &bytes);
@@ -388,14 +388,14 @@ pub fn Scanner(comptime Reader: type) type {
             if (!is_alphanumeric(start)) return ScannerError.identifier_contains_non_alphanumeric;
 
             var total_len: usize = 1;
-            try self.buffer.push(@intCast(u8, start));
+            try self.buffer.push(@as(u8, @intCast(start)));
 
             while (!self.is_eos() and !self.is_whitespace()) {
                 if (!is_alphanumeric(try self.peek()))
                     break;
 
                 total_len += 1;
-                try self.buffer.push(@intCast(u8, try self.pop()));
+                try self.buffer.push(@as(u8, @intCast(try self.pop())));
             }
 
             const identifier = try self.config.allocator.alloc(u8, total_len);
@@ -436,13 +436,13 @@ pub fn Scanner(comptime Reader: type) type {
                                     continue;
                                 }
                                 const div = std.math.pow(f64, 10, depth);
-                                part += @intToFloat(f64, ascii_to_int(try self.pop())) / div;
+                                part += @as(f64, @floatFromInt(ascii_to_int(try self.pop()))) / div;
                                 depth += 1;
                             } else {
                                 break;
                             }
                         }
-                        return Token.new_decimal(@intToFloat(f64, whole) + part, self.cursor);
+                        return Token.new_decimal(@as(f64, @floatFromInt(whole)) + part, self.cursor);
                     } else {
                         break;
                     }
@@ -457,7 +457,7 @@ pub fn Scanner(comptime Reader: type) type {
 
                     if (is_numeric(d)) {
                         const div = std.math.pow(f64, 10, depth);
-                        part += @intToFloat(f64, ascii_to_int(try self.pop())) / div;
+                        part += @as(f64, @floatFromInt(ascii_to_int(try self.pop()))) / div;
                         depth += 1;
                     }
                 }
@@ -534,7 +534,7 @@ inline fn is_alpha(r: Rune) bool {
 }
 
 fn ascii_to_int(a: u21) u8 {
-    return @intCast(u8, a - 48);
+    return @as(u8, @intCast(a - 48));
 }
 
 pub fn print_error(config: *FeanConfig, span: Span, msg: []const u8) void {

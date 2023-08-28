@@ -47,50 +47,50 @@ pub const Ref = struct {
     }
 
     pub inline fn resolve_array(self: @This(), comptime T: type) [*]T {
-        return @intToPtr([*]T, self.ptr & 0xFFFFFFFFFFFFFFF8);
+        return @as([*]T, @ptrFromInt(self.ptr & 0xFFFFFFFFFFFFFFF8));
     }
 
     pub inline fn resolve(self: @This(), comptime T: type) T {
-        const result = @intToPtr(T, self.ptr & 0xFFFFFFFFFFFFFFF8);
+        const result = @as(T, @ptrFromInt(self.ptr & 0xFFFFFFFFFFFFFFF8));
         return result;
     }
 
     // Mark and sweep
     pub inline fn get_mark(self: *@This()) bool {
-        return (@ptrCast([*]u8, &self.ptr)[0] & 0b0000_0001) > 0;
+        return (@as([*]u8, @ptrCast(&self.ptr))[0] & 0b0000_0001) > 0;
     }
 
     pub inline fn set_mark(self: *@This(), val: bool) void {
         if (val) {
-            @ptrCast([*]u8, &self.ptr)[0] |= 0b0000_0001;
+            @as([*]u8, @ptrCast(&self.ptr))[0] |= 0b0000_0001;
         } else {
-            @ptrCast([*]u8, &self.ptr)[0] &= 0b1111_1110;
+            @as([*]u8, @ptrCast(&self.ptr))[0] &= 0b1111_1110;
         }
     }
 
     // Pinned in memory
     pub inline fn get_pinned(self: *@This()) bool {
-        return (@ptrCast(*u8, &self.ptr)[0] & 0b0000_0010) > 0;
+        return (@as(*u8, @ptrCast(&self.ptr))[0] & 0b0000_0010) > 0;
     }
 
     pub inline fn set_pinned(self: *@This(), val: bool) void {
         if (val) {
-            @ptrCast([*]u8, &self.ptr)[0] |= 0b0000_0010;
+            @as([*]u8, @ptrCast(&self.ptr))[0] |= 0b0000_0010;
         } else {
-            @ptrCast([*]u8, &self.ptr)[0] &= 0b1111_1101;
+            @as([*]u8, @ptrCast(&self.ptr))[0] &= 0b1111_1101;
         }
     }
 
     // in the large section
     pub inline fn get_large(self: *@This()) bool {
-        return (@ptrCast(*u8, &self.ptr)[0] & 0b0000_0100) > 0;
+        return (@as(*u8, @ptrCast(&self.ptr))[0] & 0b0000_0100) > 0;
     }
 
     pub inline fn set_large(self: *@This(), val: bool) void {
         if (val) {
-            @ptrCast([*]u8, &self.ptr)[0] |= 0b0000_0100;
+            @as([*]u8, @ptrCast(&self.ptr))[0] |= 0b0000_0100;
         } else {
-            @ptrCast([*]u8, &self.ptr)[0] &= 0b1111_1011;
+            @as([*]u8, @ptrCast(&self.ptr))[0] &= 0b1111_1011;
         }
     }
 };
@@ -185,13 +185,13 @@ pub const BumpBlock = struct {
         if (ptr == null)
             return null;
 
-        return @ptrCast(*T, ptr.?);
+        return @as(*T, @ptrCast(ptr.?));
     }
 
     pub fn dealloc(self: *@This(), context: *Heap, ref: *Ref) void {
         context.free(self.block.ptr);
 
-        const start = @ptrToInt(ref.ptr) - @ptrToInt(self.block);
+        const start = @intFromPtr(ref.ptr) - @intFromPtr(self.block);
         var block_index = start / LINE_SIZE;
         const block_end = block_index + ref.heap_size;
 
@@ -206,7 +206,7 @@ pub const BumpBlock = struct {
     pub fn alloc_size(self: *@This(), context: *Heap, size: usize) !?*Ref {
         const header = @sizeOf(usize) + @sizeOf(*Ref);
         const actual_size = size + header;
-        const lines_spanned: usize = @intCast(u8, try std.math.divCeil(usize, actual_size, LINE_SIZE));
+        const lines_spanned: usize = @as(u8, @intCast(try std.math.divCeil(usize, actual_size, LINE_SIZE)));
         const next_bump = self.cursor + (lines_spanned * LINE_SIZE);
         const holes = self.limit - self.cursor;
 
@@ -230,11 +230,11 @@ pub const BumpBlock = struct {
             // todo do meta stuf in meta struct
             const offset = self.cursor;
             self.cursor = next_bump;
-            const start = @ptrToInt(self.block.ptr);
+            const start = @intFromPtr(self.block.ptr);
             const result = try context.create_fean_ptr(start + offset + header);
 
-            @intToPtr(*usize, start + offset).* = lines_spanned;
-            @intToPtr(**Ref, start + offset + @sizeOf(usize)).* = result;
+            @as(*usize, @ptrFromInt(start + offset)).* = lines_spanned;
+            @as(**Ref, @ptrFromInt(start + offset + @sizeOf(usize))).* = result;
 
             return result;
         }
@@ -320,7 +320,7 @@ pub const Heap = struct {
 
     fn large_allocate(self: *@This(), size: usize) !*Ref {
         const ptr = (try self.underlying_allocator.alloc(u8, size)).ptr;
-        const result = try self.create_fean_ptr(@ptrToInt(ptr));
+        const result = try self.create_fean_ptr(@intFromPtr(ptr));
 
         var node = try self.underlying_allocator.create(Linked(*Ref).Node);
         node.data = result;
@@ -340,12 +340,12 @@ pub const Heap = struct {
         for (self.rest.items) |bb| {
             var bump: *BumpBlock = bb;
             var i: usize = 0;
-            const start = @ptrToInt(bb.block.ptr);
+            const start = @intFromPtr(bb.block.ptr);
             while (i < LINE_COUNT) {
                 if (bump.meta.used[i]) {
                     const offset = i * LINE_SIZE;
-                    const size = @intToPtr(*usize, start + offset).*;
-                    var ref: *Ref = @intToPtr(**Ref, start + offset + @sizeOf(usize)).*;
+                    const size = @as(*usize, @ptrFromInt(start + offset)).*;
+                    var ref: *Ref = @as(**Ref, @ptrFromInt(start + offset + @sizeOf(usize))).*;
 
                     const mark = ref.get_mark();
                     if (mark != self.mark) {
@@ -367,7 +367,7 @@ pub const Heap = struct {
     }
 
     pub fn debug(self: *@This()) void {
-        while (self.collecting.load( .Acquire)) continue;
+        while (self.collecting.load(.Acquire)) continue;
         std.debug.print("[HEAP]\n", .{});
 
         var head_bytes: usize = 0;

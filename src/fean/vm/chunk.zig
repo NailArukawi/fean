@@ -77,8 +77,8 @@ pub const Chunk = struct {
 
                 .not => std.debug.print("[{}]:\t[{s}]\t\t(reg[{}] = !reg[{}])\n", .{ i, @tagName(op.op), op.a(), op.b() }),
 
-                .if_jmp => std.debug.print("[{}]:\t[{s}]\t(if(reg[{}]) ip += {})])\n", .{ i, @tagName(op.op), op.a(), @bitCast(i22, op.y()) }),
-                .jmp => std.debug.print("[{}]:\t[{s}]\t\t(ip += {})])\n", .{ i, @tagName(op.op), @bitCast(i32, op.x()) }),
+                .if_jmp => std.debug.print("[{}]:\t[{s}]\t(if(reg[{}]) ip += {})])\n", .{ i, @tagName(op.op), op.a(), @as(i22, @bitCast(op.y())) }),
+                .jmp => std.debug.print("[{}]:\t[{s}]\t\t(ip += {})])\n", .{ i, @tagName(op.op), @as(i32, @bitCast(op.x())) }),
 
                 else => std.debug.print("[{}]:\t[{s}]\tunknown\n", .{ i, @tagName(op.op) }),
             }

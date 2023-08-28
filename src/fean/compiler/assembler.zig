@@ -148,7 +148,7 @@ pub const Assembler = struct {
 
         var i: usize = 0;
         for (fn_body.body.as_slice()) |instr| {
-            i += (self.assemble_instr(instr, i) catch unreachable);
+            i += (try self.assemble_instr(instr, i));
         }
 
         const end = self.op_count - 1;
@@ -165,7 +165,7 @@ pub const Assembler = struct {
         return new_result;
     }
 
-    fn assemble_instr(self: *@This(), instr: Instr, i: usize) !usize {
+    fn assemble_instr(self: *@This(), instr: Instr, i: usize) anyerror!usize {
         var lines_written: usize = 1;
 
         switch (instr) {
@@ -263,7 +263,7 @@ pub const Assembler = struct {
                 const result = load.result.register();
                 opcode.set_a(result);
 
-                const lit = @intCast(u22, load.a.literal());
+                const lit = @as(u22, @intCast(load.a.literal()));
                 opcode.set_y(lit);
 
                 try self.push_op(opcode);
@@ -302,7 +302,7 @@ pub const Assembler = struct {
                 opcode.set_a(result);
 
                 const real = load.a.upvalue();
-                opcode.set_y(@intCast(u22, real));
+                opcode.set_y(@as(u22, @intCast(real)));
 
                 try self.push_op(opcode);
             },
@@ -314,7 +314,7 @@ pub const Assembler = struct {
                 opcode.set_a(storee);
 
                 const real = load.result.upvalue();
-                opcode.set_y(@intCast(u22, real));
+                opcode.set_y(@as(u22, @intCast(real)));
 
                 try self.push_op(opcode);
             },
@@ -326,7 +326,7 @@ pub const Assembler = struct {
                 opcode.set_a(storee);
 
                 const real = create.kind.upvalue();
-                opcode.set_y(@intCast(u22, real));
+                opcode.set_y(@as(u22, @intCast(real)));
 
                 try self.push_op(opcode);
             },
@@ -353,7 +353,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -368,7 +368,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -383,7 +383,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -398,7 +398,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -413,7 +413,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -428,7 +428,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -443,7 +443,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -458,7 +458,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -473,7 +473,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -488,7 +488,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -503,7 +503,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -518,7 +518,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -533,7 +533,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -548,7 +548,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -563,7 +563,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -578,7 +578,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -593,7 +593,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -608,7 +608,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -623,7 +623,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -638,7 +638,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -653,7 +653,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -668,7 +668,7 @@ pub const Assembler = struct {
                 opcode.set_b(this);
 
                 const index = struct_access.index.field();
-                opcode.set_z(@intCast(u12, index));
+                opcode.set_z(@as(u12, @intCast(index)));
 
                 try self.push_op(opcode);
             },
@@ -890,7 +890,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_i64;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -899,7 +899,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_u64;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -908,7 +908,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_i32;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -917,7 +917,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_u32;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -926,7 +926,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_i16;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -935,7 +935,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_u16;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -944,7 +944,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_i8;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -953,7 +953,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_u8;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -963,7 +963,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_f64;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -972,7 +972,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.inc_f32;
 
-                const result = @intCast(u32, inc.upvalue());
+                const result = @as(u32, @intCast(inc.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -982,7 +982,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_i64;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -991,7 +991,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_u64;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1000,7 +1000,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_i32;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1009,7 +1009,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_u32;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1018,7 +1018,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_i16;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1027,7 +1027,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_u16;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1036,7 +1036,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_i8;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1045,7 +1045,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_u8;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1055,7 +1055,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_f64;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1064,7 +1064,7 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.dec_f32;
 
-                const result = @intCast(u32, dec.upvalue());
+                const result = @as(u32, @intCast(dec.upvalue()));
                 opcode.set_x(result);
 
                 try self.push_op(opcode);
@@ -1107,9 +1107,9 @@ pub const Assembler = struct {
 
                 var jump = self.jumps.get(ij.offset);
                 if (jump != null) {
-                    var pos: isize = @intCast(isize, jump.?.pos);
-                    var offset = @intCast(i22, pos - @intCast(isize, i));
-                    opcode.set_y(@bitCast(u22, offset));
+                    var pos: isize = @as(isize, @intCast(jump.?.pos));
+                    var offset = @as(i22, @intCast(pos - @as(isize, @intCast(i))));
+                    opcode.set_y(@as(u22, @bitCast(offset)));
 
                     try self.push_op(opcode);
                 } else {
@@ -1124,9 +1124,9 @@ pub const Assembler = struct {
 
                 var jump = self.jumps.get(j.offset);
                 if (jump != null) {
-                    var pos: isize = @intCast(isize, jump.?.pos);
-                    var offset = @intCast(i32, pos - @intCast(isize, i));
-                    opcode.set_x(@bitCast(u32, offset));
+                    var pos: isize = @as(isize, @intCast(jump.?.pos));
+                    var offset = @as(i32, @intCast(pos - @as(isize, @intCast(i))));
+                    opcode.set_x(@as(u32, @bitCast(offset)));
 
                     try self.push_op(opcode);
                 } else {
@@ -1156,11 +1156,11 @@ pub const Assembler = struct {
                     var opcode = &self.result.chunk.code.items[jump.?.pos];
 
                     if (opcode.op == .if_jmp) {
-                        var offset = @intCast(i22, i - jump.?.pos);
-                        opcode.set_y(@bitCast(u22, offset));
+                        var offset = @as(i22, @intCast(i - jump.?.pos));
+                        opcode.set_y(@as(u22, @bitCast(offset)));
                     } else if (opcode.op == .jmp) {
-                        var offset = @intCast(i32, i - jump.?.pos);
-                        opcode.set_x(@bitCast(u32, offset));
+                        var offset = @as(i32, @intCast(i - jump.?.pos));
+                        opcode.set_x(@as(u32, @bitCast(offset)));
                     }
                 }
             },
@@ -1168,7 +1168,7 @@ pub const Assembler = struct {
                 lines_written = 0;
 
                 const block_addr = fta.block.?.raw();
-                const fn_body = @intToPtr(*IRBlock, block_addr);
+                const fn_body = @as(*IRBlock, @ptrFromInt(block_addr));
                 const assembled_fn_body = try self.assemble_fn(fn_body);
 
                 fn_body.destroy();

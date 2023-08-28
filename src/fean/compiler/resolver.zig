@@ -249,7 +249,7 @@ pub const Resolver = struct {
                         }
                         var param_symbol = try fn_symbol.install_symbol(param.name, kind, 42069, self.allocator);
                         param_symbol.*.param = true;
-                        param_symbol.*.binding = @intCast(u10, i);
+                        param_symbol.*.binding = @as(u10, @intCast(i));
                     }
 
                     fn_symbol.into(func.body.body);
@@ -822,11 +822,11 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
             var result: Field = undefined;
             if (fields == null) {
                 fields = try FieldList.create(field.name, field_kind, allocator);
-                fields.?.*.padding = @truncate(u2, shifted_padding);
+                fields.?.*.padding = @as(u2, @truncate(shifted_padding));
                 fields.?.*.alignment = alignment;
             } else {
                 result = try fields.?.install(field.name, field_kind, allocator);
-                result.*.padding = @truncate(u2, shifted_padding);
+                result.*.padding = @as(u2, @truncate(shifted_padding));
                 result.*.alignment = alignment;
             }
 
@@ -861,11 +861,11 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
             var result: Field = undefined;
             if (fields == null) {
                 fields = try FieldList.create(field.name, field_kind, allocator);
-                fields.?.*.padding = @truncate(u2, shifted_padding);
+                fields.?.*.padding = @as(u2, @truncate(shifted_padding));
                 fields.?.*.alignment = alignment;
             } else {
                 result = try fields.?.install(field.name, field_kind, allocator);
-                result.*.padding = @truncate(u2, shifted_padding);
+                result.*.padding = @as(u2, @truncate(shifted_padding));
                 result.*.alignment = alignment;
             }
 

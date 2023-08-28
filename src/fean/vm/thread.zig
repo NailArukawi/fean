@@ -112,7 +112,7 @@ pub const Thread = struct {
     }
 
     pub inline fn load_literal(self: *@This(), address: u22) Item {
-        return self.literals.get(@intCast(usize, address));
+        return self.literals.get(@as(usize, @intCast(address)));
     }
 
     pub inline fn append_literals(self: *@This(), items: []const Item) !usize {
@@ -342,8 +342,8 @@ pub const Thread = struct {
                 .set_upvalue => {
                     const a = opcode.a();
                     const y = opcode.y();
-                    //std.debug.print("set up: {}\n", .{self.register[a].i64});
-                    self.register[y] = self.register[a];
+                    //std.debug.print("set up: stack[{}] = register[{}]\n", .{ y, a });
+                    self.stack_view[y] = self.register[a];
                 },
                 // todo copy obj bit
                 .create_struct => {
@@ -750,19 +750,19 @@ pub const Thread = struct {
                 },
                 .if_jmp => {
                     const a = self.register[opcode.a()].bool;
-                    const offset: i22 = @bitCast(i22, opcode.y());
+                    const offset: i22 = @as(i22, @bitCast(opcode.y()));
 
                     if (a) {
-                        const change: i64 = @intCast(i64, self.ip) + offset - 1;
-                        self.ip = @intCast(usize, change);
+                        const change: i64 = @as(i64, @intCast(self.ip)) + offset - 1;
+                        self.ip = @as(usize, @intCast(change));
                     }
                 },
                 .jmp => {
                     // zig is 1 filling alot of the bits on the git version.
                     // todo fix
-                    const offset: i32 = @bitCast(i32, opcode.x());
-                    const change: i64 = @intCast(i64, self.ip) + offset - 1;
-                    self.ip = @intCast(usize, change);
+                    const offset: i32 = @as(i32, @bitCast(opcode.x()));
+                    const change: i64 = @as(i64, @intCast(self.ip)) + offset - 1;
+                    self.ip = @as(usize, @intCast(change));
                 },
 
                 .extended => return,

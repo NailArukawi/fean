@@ -128,7 +128,7 @@ pub const IRBlock = struct {
         std.debug.assert(-1 < (self.temporaries - count));
         if (self.optimize)
             for (self.temporaries..(self.temporaries + count)) |tnr|
-                self.body.push(.{ .drop = .{ .nr = @intCast(u10, 1023 - tnr), .reg = false } }) catch unreachable;
+                self.body.push(.{ .drop = .{ .nr = @as(u10, @intCast(1023 - tnr)), .reg = false } }) catch unreachable;
 
         self.temporaries -= count;
     }
@@ -144,7 +144,7 @@ pub const IRBlock = struct {
         std.debug.assert(-1 < (self.registers - count));
         if (self.optimize)
             for (self.registers..(self.registers + count)) |rnr|
-                self.body.push(.{ .drop = .{ .nr = @intCast(u10, rnr), .reg = true } }) catch unreachable;
+                self.body.push(.{ .drop = .{ .nr = @as(u10, @intCast(rnr)), .reg = true } }) catch unreachable;
         self.registers -= count;
     }
 };
@@ -248,7 +248,7 @@ pub const IR = struct {
         std.debug.assert(-1 < (self.temporaries - count));
         if (self.optimize)
             for (self.temporaries..(self.temporaries + count)) |tnr|
-                self.body.push(.{ .drop = .{ .nr = @intCast(u10, 1023 - tnr), .reg = false } }) catch unreachable;
+                self.body.push(.{ .drop = .{ .nr = @as(u10, @intCast(1023 - tnr)), .reg = false } }) catch unreachable;
 
         self.temporaries -= count;
     }
@@ -264,7 +264,7 @@ pub const IR = struct {
         std.debug.assert(-1 < (self.registers - count));
         if (self.optimize)
             for (self.registers..(self.registers + count)) |rnr|
-                self.body.push(.{ .drop = .{ .nr = @intCast(u10, rnr), .reg = true } }) catch unreachable;
+                self.body.push(.{ .drop = .{ .nr = @as(u10, @intCast(rnr)), .reg = true } }) catch unreachable;
         self.registers -= count;
     }
 
@@ -659,7 +659,7 @@ pub const Compiler = struct {
                     _ = try self.generate(stmnt, block, null, passalong_extra);
 
                 switch (detatch) {
-                    true => return Address.new_raw(@ptrToInt(block.block)),
+                    true => return Address.new_raw(@intFromPtr(block.block)),
                     false => try scope.push_instr(Instr{ .block = block.block }),
                 }
             },
@@ -827,7 +827,7 @@ pub const Compiler = struct {
                     return null;
                 } else if (op == .plus_plus) {
                     const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
-                    var binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+                    var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
                     switch (symbol.kind.?) {
@@ -860,7 +860,7 @@ pub const Compiler = struct {
                             .result = global_tmp.?,
                         } });
 
-                        const up_adress: u56 = @intCast(u56, global_tmp.?.temporary() + (self.depth * 1024));
+                        const up_adress: u56 = @as(u56, @intCast(global_tmp.?.temporary() + (self.depth * 1024)));
                         binding = Address.new_upvalue(up_adress);
                     }
 
@@ -894,7 +894,7 @@ pub const Compiler = struct {
                     return null;
                 } else if (op == .minus_minus) {
                     const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
-                    var binding = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+                    var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
                     switch (symbol.kind.?) {
@@ -927,7 +927,7 @@ pub const Compiler = struct {
                             .result = global_tmp.?,
                         } });
 
-                        const up_adress: u56 = @intCast(u56, global_tmp.?.temporary() + (self.depth * 1024));
+                        const up_adress: u56 = @as(u56, @intCast(global_tmp.?.temporary() + (self.depth * 1024)));
                         binding = Address.new_upvalue(up_adress);
                     }
 
@@ -981,7 +981,7 @@ pub const Compiler = struct {
                 const access = StructAccess{
                     .reg = address,
                     .this = child,
-                    .index = Address.new_field(@intCast(u56, field.index)),
+                    .index = Address.new_field(@as(u56, @intCast(field.index))),
                 };
 
                 if (extra != null and extra.?.extra() == .set_mode) {
@@ -1018,7 +1018,7 @@ pub const Compiler = struct {
                 const access = StructAccess{
                     .reg = address,
                     .this = child,
-                    .index = Address.new_field(@intCast(u56, field.index)),
+                    .index = Address.new_field(@as(u56, @intCast(field.index))),
                 };
 
                 if (mem.eql(u8, kind_name, "u64")) {
@@ -1268,7 +1268,7 @@ pub const Compiler = struct {
                     local = gen_result.?;
                 }
 
-                const result = Address.new_upvalue(@intCast(u56, symbol.stack_binding()));
+                const result = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
 
                 try scope.push_instr(.{ .set_upvalue = .{
                     .a = local,
@@ -1541,7 +1541,7 @@ pub const Compiler = struct {
         const object = try self.heap.alloc(@sizeOf(Function) + @sizeOf(?*Methods));
         const body = object.object().function();
         body.* = Function{ .external = .{
-            .arity = @intCast(u8, function.params.len),
+            .arity = @as(u8, @intCast(function.params.len)),
             .result = (function.result != null),
             .body = ptr.?,
         } };
@@ -1568,7 +1568,7 @@ pub const Compiler = struct {
             self.in_function = false;
         };
 
-        body.*.internal.arity = @intCast(u8, function.params.len);
+        body.*.internal.arity = @as(u8, @intCast(function.params.len));
         body.*.internal.result = (function.result != null);
 
         const lit = try self.push_literal(Item{ .object = object }, .InternalFn);
@@ -1619,7 +1619,7 @@ pub const Compiler = struct {
         const copy_if_move = Address.new_extra(.copy_if_move);
 
         if (call.arguments != null) {
-            defer scope.drop_regs(@intCast(u10, call.arguments.?.len));
+            defer scope.drop_regs(@as(u10, @intCast(call.arguments.?.len)));
             arg_start = scope.get_reg().?;
             const args = call.arguments.?;
 
@@ -1739,7 +1739,7 @@ pub const Compiler = struct {
                         // we have an upvalue
                         const zamn = symbol.?;
 
-                        const real = @intCast(u56, zamn.stack_binding());
+                        const real = @as(u56, @intCast(zamn.stack_binding()));
                         const real_address = Address.new_upvalue(real);
 
                         try scope.push_instr(.{ .get_upvalue = .{
@@ -1782,7 +1782,7 @@ pub const Compiler = struct {
             const payload: StructAccess = .{
                 .reg = tmp,
                 .this = result,
-                .index = Address.new_field(@intCast(u56, i)),
+                .index = Address.new_field(@as(u56, @intCast(i))),
             };
 
             const lk: LitKind = LitKind.from_kind(field.kind.?.resolved);
@@ -1824,7 +1824,7 @@ pub const Compiler = struct {
 
             const found = self.literals.get(i);
             switch (lk) {
-                .Kind => if (found.kind == literal.kind) return Address.new_literal(@intCast(u56, i)),
+                .Kind => if (found.kind == literal.kind) return Address.new_literal(@as(u56, @intCast(i))),
 
                 // objects that are not builtin
                 .Object => unreachable,
@@ -1880,7 +1880,7 @@ pub const Compiler = struct {
 
                 // we have a dupe!
                 if (same) {
-                    return Address.new_literal(@intCast(u56, i));
+                    return Address.new_literal(@as(u56, @intCast(i)));
                 }
             }
         }
@@ -1889,13 +1889,13 @@ pub const Compiler = struct {
         try self.literals_typing.push(kind);
 
         self.literal_count.* += 1;
-        return Address.new_literal(@intCast(u56, self.literal_count.*));
+        return Address.new_literal(@as(u56, @intCast(self.literal_count.*)));
     }
 
     fn copy_text(self: *@This(), data: []const u8) !*heap.Ref {
         var string = try self.allocator.alloc(u8, data.len);
         mem.copy(u8, string, data);
-        var body = try heap.Ref.create(self.allocator, @ptrToInt(string.ptr));
+        var body = try heap.Ref.create(self.allocator, @intFromPtr(string.ptr));
 
         var text_copy = try Text.create_const(self.allocator, data.len, body);
         return text_copy;
@@ -1909,7 +1909,7 @@ pub const Compiler = struct {
         obj.methods = null;
 
         try self.objects.push(obj);
-        return heap.Ref.create(self.allocator, @ptrToInt(obj));
+        return heap.Ref.create(self.allocator, @intFromPtr(obj));
     }
 };
 

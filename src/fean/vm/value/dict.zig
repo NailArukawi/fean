@@ -61,8 +61,8 @@ pub const Dict = struct {
 
     pub fn set(self: *@This(), key: Item, value: Item) !bool {
         if (DEBUG_DICT) std.debug.print("Dict.set(\"{s}\")\n", .{key.text().as_slice()});
-        const max_load = @intToFloat(f32, self.capacity) * DICT_LOAD_CAPACITY;
-        if (self.count + 1 > @floatToInt(usize, max_load)) {
+        const max_load = @as(f32, @floatFromInt(self.capacity)) * DICT_LOAD_CAPACITY;
+        if (self.count + 1 > @as(usize, @intFromFloat(max_load))) {
             try self.grow();
         }
 
@@ -79,7 +79,7 @@ pub const Dict = struct {
     }
 
     pub fn grow(self: *@This()) !void {
-        const new_size = @floatToInt(usize, @intToFloat(f32, self.capacity) * DICT_GROW_FACTOR);
+        const new_size = @as(usize, @intFromFloat(@as(f32, @floatFromInt(self.capacity)) * DICT_GROW_FACTOR));
         var new_dict = try Dict.create(self.heap, new_size, self.hash_fn, self.eq_fn);
 
         var d = new_dict.object().dict();

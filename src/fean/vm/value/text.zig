@@ -34,7 +34,7 @@ pub const Text = struct {
 
     pub fn create_const(allocator: Allocator, len: usize, string: *Ref) !*Ref {
         var allocation = try allocator.alloc(u8, @sizeOf(@This()) + @sizeOf(?*Methods));
-        var object = @ptrToInt(&allocation[0]);
+        var object = @intFromPtr(&allocation[0]);
         var object_ptr = try Ref.create(allocator, object);
 
         object_ptr.object().body(@This()).string = string;

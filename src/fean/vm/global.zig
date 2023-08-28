@@ -32,7 +32,7 @@ pub const Global = struct {
         //std.debug.print("Global.get(\"{s}\")\n", .{name_text.text().as_slice()});
         var dict = self.items.object().dict();
         const result = dict.get(name_text) orelse return null;
-        return @ptrCast(*GlobalEntry, @alignCast(8, result.any)).item;
+        return @as(*GlobalEntry, @ptrCast(@alignCast(result.any))).item;
     }
 
     pub inline fn set(self: *@This(), name_text: Item, value: Item) !bool {
@@ -40,7 +40,7 @@ pub const Global = struct {
         var entry = try dict.heap.underlying_allocator.create(GlobalEntry);
         entry.item = value;
         entry.object = false;
-        const item_entry = Item{ .any = @ptrCast(*anyopaque, @alignCast(1, entry)) };
+        const item_entry = Item{ .any = @as(*anyopaque, @ptrCast(@alignCast(entry))) };
         return dict.set(name_text, item_entry);
     }
 
@@ -49,7 +49,7 @@ pub const Global = struct {
         var entry = try dict.heap.underlying_allocator.create(GlobalEntry);
         entry.item = value;
         entry.object = true;
-        const item_entry = Item{ .any = @ptrCast(*anyopaque, @alignCast(1, entry)) };
+        const item_entry = Item{ .any = @as(*anyopaque, @ptrCast(@alignCast(entry))) };
         return dict.set(name_text, item_entry);
     }
 
@@ -63,7 +63,7 @@ pub const Global = struct {
         var entries: []DictEntry = dict.entries()[0..dict.capacity];
         for (entries) |e| {
             if (e.key != null and !e.tomb) {
-                var item = @ptrCast(*GlobalEntry, @alignCast(8, e.value.any));
+                var item = @as(*GlobalEntry, @ptrCast(@alignCast(e.value.any)));
                 if (item.object) item.item.object.set_mark(dict.heap.mark);
             }
         }
