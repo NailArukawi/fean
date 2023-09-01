@@ -656,28 +656,85 @@ pub const Thread = struct {
                     const x = opcode.x();
                     self.stack_view[x].i64 += 1;
                 },
-                .inc_u64 => unreachable,
-                .inc_i32 => unreachable,
-                .inc_u32 => unreachable,
-                .inc_i16 => unreachable,
-                .inc_u16 => unreachable,
-                .inc_i8 => unreachable,
-                .inc_u8 => unreachable,
+                .inc_u64 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u64 += 1;
+                },
+                .inc_i32 => {
+                    const x = opcode.x();
+                    self.stack_view[x].i32 += 1;
+                },
+                .inc_u32 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u32 += 1;
+                },
+                .inc_i16 => {
+                    const x = opcode.x();
+                    self.stack_view[x].i16 += 1;
+                },
+                .inc_u16 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u16 += 1;
+                },
+                .inc_i8 => {
+                    const x = opcode.x();
+                    self.stack_view[x].i8 += 1;
+                },
+                .inc_u8 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u8 += 1;
+                },
 
-                .inc_f64 => unreachable,
-                .inc_f32 => unreachable,
+                .inc_f64 => {
+                    const x = opcode.x();
+                    self.stack_view[x].f64 += 1;
+                },
+                .inc_f32 => {
+                    const x = opcode.x();
+                    self.stack_view[x].f32 += 1;
+                },
 
-                .dec_i64 => unreachable,
-                .dec_u64 => unreachable,
-                .dec_i32 => unreachable,
-                .dec_u32 => unreachable,
-                .dec_i16 => unreachable,
-                .dec_u16 => unreachable,
-                .dec_i8 => unreachable,
-                .dec_u8 => unreachable,
+                .dec_i64 => {
+                    const x = opcode.x();
+                    self.stack_view[x].i64 -= 1;
+                },
+                .dec_u64 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u64 -= 1;
+                },
+                .dec_i32 => {
+                    const x = opcode.x();
+                    self.stack_view[x].i32 -= 1;
+                },
+                .dec_u32 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u32 -= 1;
+                },
+                .dec_i16 => {
+                    const x = opcode.x();
+                    self.stack_view[x].i16 -= 1;
+                },
+                .dec_u16 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u16 -= 1;
+                },
+                .dec_i8 => {
+                    const x = opcode.x();
+                    self.stack_view[x].i8 -= 1;
+                },
+                .dec_u8 => {
+                    const x = opcode.x();
+                    self.stack_view[x].u8 -= 1;
+                },
 
-                .dec_f64 => unreachable,
-                .dec_f32 => unreachable,
+                .dec_f64 => {
+                    const x = opcode.x();
+                    self.stack_view[x].f64 -= 1;
+                },
+                .dec_f32 => {
+                    const x = opcode.x();
+                    self.stack_view[x].f32 -= 1;
+                },
 
                 // Control flow
                 .less_than_u64 => {
