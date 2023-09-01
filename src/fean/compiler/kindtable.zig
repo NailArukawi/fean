@@ -1,16 +1,16 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const vm = @import("../vm/mod.zig");
-const Methods = @import("../vm/value/function.zig").Methods;
+const runtime = @import("../runtime/mod.zig");
+const Methods = @import("../runtime/value/function.zig").Methods;
 
 pub const KindMeta = struct {
     is_fn: bool = false,
     is_extern_fn: bool = false,
 };
 
-pub const FN_SIZE: usize = @sizeOf(vm.Function);
-pub const EXTERN_FN_SIZE: usize = @sizeOf(vm.Function);
+pub const FN_SIZE: usize = @sizeOf(runtime.Function);
+pub const EXTERN_FN_SIZE: usize = @sizeOf(runtime.Function);
 // if you see a kind with this size, something has gone wrong lol.
 pub const UNSET_SIZE: usize = std.math.maxInt(usize);
 

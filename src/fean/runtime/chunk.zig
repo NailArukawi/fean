@@ -3,7 +3,7 @@ const List = std.ArrayList;
 
 const Item = @import("mod.zig").Item;
 const Opcode = @import("mod.zig").Opcode;
-const Stack = @import("../stack.zig").Stack;
+const Stack = @import("../common/stack.zig").Stack;
 
 const Allocator = std.mem.Allocator;
 

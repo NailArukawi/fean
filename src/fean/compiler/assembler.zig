@@ -7,10 +7,10 @@ const IRBlock = @import("mod.zig").IRBlock;
 const Instr = @import("mod.zig").Instr;
 const Address = @import("mod.zig").Address;
 const CompilerMeta = @import("mod.zig").CompilerMeta;
-const Chunk = @import("../vm/mod.zig").Chunk;
-const Op = @import("../vm/mod.zig").Op;
-const Opcode = @import("../vm/mod.zig").Opcode;
-const Stack = @import("../stack.zig").Stack;
+const Chunk = @import("../runtime/mod.zig").Chunk;
+const Op = @import("../runtime/mod.zig").Op;
+const Opcode = @import("../runtime/mod.zig").Opcode;
+const Stack = @import("../common/stack.zig").Stack;
 
 const Allocator = std.mem.Allocator;
 

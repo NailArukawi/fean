@@ -2,8 +2,8 @@
 pub const Thread = @import("thread.zig").Thread;
 
 // Opcode
-pub const Op = @import("opcode.zig").Op;
-pub const Opcode = @import("opcode.zig").Opcode;
+pub const Op = @import("../common/opcode.zig").Op; // todo remove
+pub const Opcode = @import("../common/opcode.zig").Opcode; // todo remove
 
 // Chunk
 pub const Chunk = @import("chunk.zig").Chunk;

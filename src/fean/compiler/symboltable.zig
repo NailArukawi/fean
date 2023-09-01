@@ -80,7 +80,7 @@ pub const Symbol = struct {
         allocator.free(this);
     }
 
-    pub fn stack_binding(this: *@This()) usize {
+    pub fn stackBinding(this: *@This()) usize {
         return (this.depth * 1024) + this.binding;
     }
 };

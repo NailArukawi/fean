@@ -8,11 +8,11 @@ const Token = mod.Token;
 const TokenData = mod.TokenData;
 const Keyword = mod.Keyword;
 
-const FileLookup = @import("../../fean.zig").FileLookup;
-const FeanConfig = @import("../../fean.zig").FeanConfig;
+const FileLookup = @import("../fean.zig").FileLookup;
+const FeanConfig = @import("../fean.zig").FeanConfig;
 
 const Rune = u21;
-const Stack = @import("../../stack.zig").Stack;
+const Stack = @import("../common/stack.zig").Stack;
 
 pub const KWPair = struct {
     hash: u64,

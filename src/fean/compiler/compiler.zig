@@ -20,13 +20,13 @@ pub const Arithmetic = mod.Arithmetic;
 pub const StructAccess = mod.StructAccess;
 pub const Instr = mod.Instr;
 
-const Item = @import("../vm/mod.zig").Item;
-const Methods = @import("../vm/mod.zig").Methods;
-const Function = @import("../vm/mod.zig").Function;
-const Text = @import("../vm/mod.zig").Text;
-const Object = @import("../vm/mod.zig").Object;
-const Stack = @import("../stack.zig").Stack;
-const heap = @import("../vm/heap.zig");
+const Item = @import("../runtime/mod.zig").Item;
+const Methods = @import("../runtime/mod.zig").Methods;
+const Function = @import("../runtime/mod.zig").Function;
+const Text = @import("../runtime/mod.zig").Text;
+const Object = @import("../runtime/mod.zig").Object;
+const Stack = @import("../common/stack.zig").Stack;
+const heap = @import("../runtime/heap.zig");
 
 const FeanConfig = @import("../fean.zig").FeanConfig;
 
@@ -816,7 +816,7 @@ pub const Compiler = struct {
                     return null;
                 } else if (op == .plus_plus) {
                     const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
-                    var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
+                    var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stackBinding())));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
                     switch (symbol.kind) {
@@ -884,7 +884,7 @@ pub const Compiler = struct {
                     return null;
                 } else if (op == .minus_minus) {
                     const symbol = scope.lookup_symbol(ue.value.literal.data.identifier).?;
-                    var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
+                    var binding = Address.new_upvalue(@as(u56, @intCast(symbol.stackBinding())));
                     // todo we should use kind everywhere but no methods so no clue.
                     var kind_name: []const u8 = "";
                     switch (symbol.kind) {
@@ -1259,7 +1259,7 @@ pub const Compiler = struct {
                     local = gen_result.?;
                 }
 
-                const result = Address.new_upvalue(@as(u56, @intCast(symbol.stack_binding())));
+                const result = Address.new_upvalue(@as(u56, @intCast(symbol.stackBinding())));
 
                 try scope.push_instr(.{ .set_upvalue = .{
                     .a = local,
@@ -1732,7 +1732,7 @@ pub const Compiler = struct {
                         // we have an upvalue
                         const zamn = symbol.?;
 
-                        const real = @as(u56, @intCast(zamn.stack_binding()));
+                        const real = @as(u56, @intCast(zamn.stackBinding()));
                         const real_address = Address.new_upvalue(real);
 
                         try scope.push_instr(.{ .get_upvalue = .{

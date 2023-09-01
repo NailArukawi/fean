@@ -16,7 +16,7 @@ const Object = @import("mod.zig").Object;
 const Text = @import("mod.zig").Text;
 const Dict = @import("mod.zig").Dict;
 
-const Stack = @import("../stack.zig").Stack;
+const Stack = @import("../common/stack.zig").Stack;
 const AssembledResult = @import("../compiler/mod.zig").AssembledResult;
 const CompilerMeta = @import("../compiler/mod.zig").CompilerMeta;
 

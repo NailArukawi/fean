@@ -20,7 +20,7 @@ const FieldList = mod.FieldList;
 const Field = mod.Field;
 const FieldOrName = mod.parser.FieldOrName;
 
-const Stack = @import("../stack.zig").Stack;
+const Stack = @import("../common/stack.zig").Stack;
 const Allocator = std.mem.Allocator;
 
 const KIND_UNSET_SIZE = mod.KIND_UNSET_SIZE;

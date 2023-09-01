@@ -1,13 +1,14 @@
 const std = @import("std");
-pub const vm = @import("vm/mod.zig");
+pub const runtime = @import("runtime/mod.zig");
+pub const parser = @import("parser/mod.zig");
 pub const compiler = @import("compiler/mod.zig");
-pub const Ref = vm.Ref;
+pub const Ref = runtime.Ref;
 
 const Allocator = std.mem.Allocator;
 
 pub const Fean = struct {
     config: *FeanConfig,
-    thread: *vm.Thread,
+    thread: *runtime.Thread,
     compiler_meta: *compiler.CompilerMeta,
 
     pub fn create(reader: std.fs.File.Reader, config: *FeanConfig) !@This() {
@@ -28,7 +29,7 @@ pub const Fean = struct {
 
         var fean = @This(){
             .config = config,
-            .thread = try vm.Thread.create(compiler_meta, main, config.allocator),
+            .thread = try runtime.Thread.create(compiler_meta, main, config.allocator),
             .compiler_meta = compiler_meta,
         };
 
@@ -37,11 +38,11 @@ pub const Fean = struct {
         return fean;
     }
 
-    pub fn call(self: *@This(), name_text: vm.Item, arguments: ?[]vm.Item) void {
+    pub fn call(self: *@This(), name_text: runtime.Item, arguments: ?[]runtime.Item) void {
         self.thread.call(name_text, arguments);
     }
 
-    pub inline fn result(self: *@This()) vm.Item {
+    pub inline fn result(self: *@This()) runtime.Item {
         return self.thread.register[0];
     }
 };
@@ -53,7 +54,7 @@ pub const FeanConfig = struct {
     file_debug: bool = false,
     file_lookup: ?*const fn (compiler.parser.Span) FileLookup = null,
 
-    fn_lookup: ?*const fn (name: []const u8) ?*const fn (vm: *vm.Thread, args: []vm.Item, result: ?*vm.Item) void,
+    fn_lookup: ?*const fn (name: []const u8) ?*const fn (vm: *runtime.Thread, args: []runtime.Item, result: ?*runtime.Item) void,
 
     file_id_count: u32 = 1,
     compile_flags: FeanCompileFlags,

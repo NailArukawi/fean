@@ -1,4 +1,4 @@
-pub const parser = @import("parser/mod.zig");
+pub const parser = @import("../parser/mod.zig"); // todo remove
 
 // Kindtable
 const kindtable = @import("kindtable.zig");

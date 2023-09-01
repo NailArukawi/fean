@@ -6,14 +6,12 @@ fib : Fn : fn(fib_count: i64) -> i64 {
     // fibonacci
     a : i64 = 1;
     b : i64 = 0;
-    alternate : bool = false;
 
     i : i64 = 1;
     while (i < fib_count) {
-        if (alternate) a += b;
+        if (b > a) a += b;
         else b += a;
 
-        alternate = !alternate;
         i++;
     }
 

@@ -14,18 +14,18 @@ pub const Field = @import("ast.zig").Field;
 pub const FieldOrName = @import("ast.zig").FieldOrName;
 pub const FunctionBody = @import("ast.zig").FunctionBody;
 
-pub const KindTable = @import("../kindtable.zig").KindTable;
-pub const SymbolTable = @import("../symboltable.zig").SymbolTable;
-pub const SymbolKind = @import("../symboltable.zig").SymbolKind;
-pub const Symbol = @import("../symboltable.zig").Symbol;
+pub const KindTable = @import("../compiler/kindtable.zig").KindTable;
+pub const SymbolTable = @import("../compiler/symboltable.zig").SymbolTable;
+pub const SymbolKind = @import("../compiler/symboltable.zig").SymbolKind;
+pub const Symbol = @import("../compiler/symboltable.zig").Symbol;
 
-const FileLookup = @import("../../fean.zig").FileLookup;
-const FeanConfig = @import("../../fean.zig").FeanConfig;
+const FileLookup = @import("../fean.zig").FileLookup;
+const FeanConfig = @import("../fean.zig").FeanConfig;
 
 const Allocator = std.mem.Allocator;
 const Map = std.AutoHashMap;
 const List = std.ArrayList;
-const Stack = @import("../../stack.zig").Stack;
+const Stack = @import("../common/stack.zig").Stack;
 
 pub const Parser = struct {
     allocator: Allocator,

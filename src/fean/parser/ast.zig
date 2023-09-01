@@ -5,11 +5,11 @@ const Allocator = std.mem.Allocator;
 const mod = @import("mod.zig");
 const Token = mod.Token;
 const Span = mod.Span;
-const Symbol = @import("../symboltable.zig").Symbol;
-const SymbolTable = @import("../symboltable.zig").SymbolTable;
-const SymbolKind = @import("../symboltable.zig").SymbolKind;
-const KindTable = @import("../kindtable.zig").KindTable;
-const Kind = @import("../kindtable.zig").Kind;
+const Symbol = @import("../compiler/symboltable.zig").Symbol;
+const SymbolTable = @import("../compiler/symboltable.zig").SymbolTable;
+const SymbolKind = @import("../compiler/symboltable.zig").SymbolKind;
+const KindTable = @import("../compiler/kindtable.zig").KindTable;
+const Kind = @import("../compiler/kindtable.zig").Kind;
 
 pub const AST = struct {
     head: []*Node,
@@ -36,7 +36,7 @@ pub const FunctionBody = union {
 };
 
 pub const FieldOrName = union(enum) {
-    resolved: *@import("../kindtable.zig").Field,
+    resolved: *@import("../compiler/kindtable.zig").Field,
     unresolved: []const u8,
 };
 

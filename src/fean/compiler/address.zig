@@ -4,7 +4,7 @@ const mod = @import("mod.zig");
 const IRBlock = mod.IRBlock;
 const Symbol = mod.Symbol;
 const Kind = mod.Kind;
-const Function = @import("../vm/mod.zig").Function;
+const Function = @import("../runtime/mod.zig").Function;
 
 pub const AddressKind = enum(u8) {
     not_set,
