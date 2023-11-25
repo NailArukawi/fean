@@ -41,7 +41,8 @@ pub const ExternMethod = struct {
     body: ExternFunctionBody,
 };
 
-pub const ExternFunctionBody = *const fn (vm: *Thread, arguments: [*]Item, argument_count: u16, result: ?*Item) callconv(.C) void;
+pub const ExternFunctionBody = *const fn (vm: *Thread, arguments: ExternFunctionArguments, result: ?*Item) callconv(.C) void;
+pub const ExternFunctionArguments = extern struct { count: u16, arguments: [*]Item };
 
 const METHODS_INITIAL_SIZE: usize = 32;
 

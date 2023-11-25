@@ -1,5 +1,6 @@
 const std = @import("std");
 const fean = @import("fean/fean.zig");
+const Arguments = fean.runtime.ExternFunctionArguments;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -39,37 +40,32 @@ fn lookup_fn(name: []const u8) ?fean_fn {
     unreachable;
 }
 
-fn heap_debug(vm: *fean.runtime.Thread, args: [*]fean.runtime.Item, arg_count: u16, dd: ?*fean.runtime.Item) callconv(.C) void {
-    _ = arg_count;
-    _ = dd;
+fn heap_debug(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+    _ = result;
     _ = args;
     vm.heap.debug();
 }
 
-fn heap_recycle(vm: *fean.runtime.Thread, args: [*]fean.runtime.Item, arg_count: u16, dd: ?*fean.runtime.Item) callconv(.C) void {
-    _ = arg_count;
-    _ = dd;
+fn heap_recycle(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+    _ = result;
     _ = args;
     vm.gc() catch unreachable;
 }
 
-fn zamn(vm: *fean.runtime.Thread, args: [*]fean.runtime.Item, arg_count: u16, result: ?*fean.runtime.Item) callconv(.C) void {
-    _ = arg_count;
+fn zamn(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
     _ = vm;
     _ = args;
     const z: i64 = 420691337;
     result.?.* = fean.runtime.Item.from(i64, z);
 }
 
-fn print_i64(vm: *fean.runtime.Thread, args: [*]fean.runtime.Item, arg_count: u16, result: ?*fean.runtime.Item) callconv(.C) void {
-    _ = arg_count;
+fn print_i64(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
     _ = vm;
     _ = result;
     std.debug.print("[Fean]: {}\n", .{args[0].i64});
 }
 
-fn print_f64(vm: *fean.runtime.Thread, args: [*]fean.runtime.Item, arg_count: u16, result: ?*fean.runtime.Item) callconv(.C) void {
-    _ = arg_count;
+fn print_f64(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
     _ = vm;
     _ = result;
     std.debug.print("[Fean]: {d:.3}\n", .{args[0].f64});
@@ -77,8 +73,7 @@ fn print_f64(vm: *fean.runtime.Thread, args: [*]fean.runtime.Item, arg_count: u1
 
 var time_stamp: ?i128 = null;
 
-fn time(vm: *fean.runtime.Thread, args: [*]fean.runtime.Item, arg_count: u16, result: ?*fean.runtime.Item) callconv(.C) void {
-    _ = arg_count;
+fn time(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
     _ = vm;
     _ = args;
     if (time_stamp == null) {

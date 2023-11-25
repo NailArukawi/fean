@@ -28,6 +28,7 @@ pub const Method = @import("value/function.zig").Method;
 pub const CallFrame = @import("value/function.zig").CallFrame;
 pub const Methods = @import("value/function.zig").Methods;
 pub const ExternFunctionBody = @import("value/function.zig").ExternFunctionBody;
+pub const ExternFunctionArguments = @import("value/function.zig").ExternFunctionArguments;
 // Object
 pub const Object = @import("value/object.zig").Object;
 // Text
