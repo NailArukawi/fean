@@ -272,11 +272,11 @@ pub const Thread = struct {
                     if (has_return == 0) {
                         // call extern method with no return value
                         const arity = function.arity;
-                        function.body(self, self.register[arg_start..(arg_start + arity)], null);
+                        function.body(self, self.register[arg_start..], arity, null);
                     } else {
                         // call extern method with return value
                         const arity = function.arity;
-                        function.body(self, self.register[arg_start..(arg_start + arity)], &self.register[result]);
+                        function.body(self, self.register[arg_start..], arity, &self.register[result]);
                     }
                 },
                 //.invoke_extern => {

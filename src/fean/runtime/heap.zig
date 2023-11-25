@@ -259,7 +259,7 @@ pub const Heap = struct {
         var result = try allocator.create(@This());
 
         result.mark = false;
-        result.collecting = std.atomic.Atomic(bool).init(false);
+        result.collecting = std.atomic.Value(bool).init(false);
 
         result.head = try BumpBlock.create(allocator);
         result.overflow = try BumpBlock.create(allocator);

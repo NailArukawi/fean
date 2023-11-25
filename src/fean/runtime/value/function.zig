@@ -27,7 +27,7 @@ pub const InternalFunction = extern struct { arity: u8, result: bool, body: *Chu
 pub const ExternFunction = extern struct {
     arity: u8,
     result: bool,
-    body: *const fn (vm: *Thread, args: []Item, result: ?*Item) callconv(.C) void,
+    body: ExternFunctionBody,
 };
 
 pub const Method = extern union {
@@ -38,8 +38,10 @@ pub const Method = extern union {
 pub const ExternMethod = struct {
     arity: u8,
     result: bool,
-    body: *const fn (self: *Object, args: []Item, result: ?*Item) void,
+    body: ExternFunctionBody,
 };
+
+pub const ExternFunctionBody = *const fn (vm: *Thread, arguments: [*]Item, argument_count: u16, result: ?*Item) callconv(.C) void;
 
 const METHODS_INITIAL_SIZE: usize = 32;
 

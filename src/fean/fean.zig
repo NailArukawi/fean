@@ -54,7 +54,7 @@ pub const FeanConfig = struct {
     file_debug: bool = false,
     file_lookup: ?*const fn (compiler.parser.Span) FileLookup = null,
 
-    fn_lookup: ?*const fn (name: []const u8) ?*const fn (vm: *runtime.Thread, args: []runtime.Item, result: ?*runtime.Item) void,
+    fn_lookup: ?*const fn (name: []const u8) ?runtime.ExternFunctionBody,
 
     file_id_count: u32 = 1,
     compile_flags: FeanCompileFlags,
