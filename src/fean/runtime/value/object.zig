@@ -1,6 +1,7 @@
 const Ref = @import("../mod.zig").Ref;
 
 const Methods = @import("function.zig").Methods;
+const Method = @import("function.zig").Method;
 const Function = @import("function.zig").Function;
 const Dict = @import("dict.zig").Dict;
 const Text = @import("text.zig").Text;

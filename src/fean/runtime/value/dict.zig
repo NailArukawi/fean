@@ -30,7 +30,7 @@ pub const Dict = struct {
 
     pub fn create(heap: *Heap, size: usize, hash_fn: *const fn (Item) u64, eq_fn: *const fn (Item, Item) bool) !*Ref {
         var result = try heap.alloc(@sizeOf(@This()) + @sizeOf(?*Methods));
-        var items = try heap.alloc(@sizeOf(DictEntry) * size);
+        const items = try heap.alloc(@sizeOf(DictEntry) * size);
 
         var this = result.object().body(@This());
         this.* = @This(){
@@ -107,7 +107,7 @@ pub const Dict = struct {
         var tombstone: ?*DictEntry = null;
 
         while (true) {
-            var entry = &self.items.resolve_array(DictEntry)[index];
+            const entry = &self.items.resolve_array(DictEntry)[index];
             if (entry.key == null) {
                 if (entry.tomb) {
                     tombstone = entry;

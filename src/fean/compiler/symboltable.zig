@@ -14,7 +14,7 @@ pub const SymbolTable = struct {
     tail: ?*Symbol = null,
 
     pub fn create(allocator: Allocator) !*@This() {
-        var this = try allocator.create(@This());
+        const this = try allocator.create(@This());
         this.* = .{};
         return this;
     }
@@ -46,7 +46,7 @@ pub const SymbolTable = struct {
     }
 
     pub fn install(this: *@This(), allocator: Allocator, name: []const u8, kind: SymbolKind, size: usize) !*Symbol {
-        var installee = try Symbol.create(allocator, name, kind, size);
+        const installee = try Symbol.create(allocator, name, kind, size);
 
         if (this.head == null) {
             this.head = installee;
@@ -67,11 +67,13 @@ pub const Symbol = struct {
     global: bool = false,
     param: bool = false,
     binding: u10 = 0,
+    // none if 0
+    literal: usize = 0,
     depth: usize = 0,
     next: ?*@This() = null,
 
     pub fn create(allocator: Allocator, name: []const u8, kind: SymbolKind, size: usize) !*@This() {
-        var this = try allocator.create(@This());
+        const this = try allocator.create(@This());
         this.* = .{ .name = name, .kind = kind, .size = size };
         return this;
     }

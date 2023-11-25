@@ -78,7 +78,7 @@ pub fn Scanner(comptime Reader: type) type {
         }
 
         fn read(self: *@This()) !void {
-            var rest_count: u8 = @as(u8, @intCast(self.end - self.start));
+            const rest_count: u8 = @as(u8, @intCast(self.end - self.start));
             std.debug.assert(self.buffer.len > rest_count);
 
             if (rest_count > 0)

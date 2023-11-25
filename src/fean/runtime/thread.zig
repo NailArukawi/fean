@@ -180,7 +180,7 @@ pub const Thread = struct {
         // clean obj_bools
         @memset(self.stack_view_obj[0..(self.depth * STACK_SIZE)], false);
 
-        var frame = self.call_stack.pop();
+        const frame = self.call_stack.pop();
 
         self.chunk = frame.function;
         self.ip = frame.ip;

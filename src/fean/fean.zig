@@ -12,14 +12,14 @@ pub const Fean = struct {
     compiler_meta: *compiler.CompilerMeta,
 
     pub fn create(reader: std.fs.File.Reader, config: *FeanConfig) !@This() {
-        var compiler_meta = try compiler.CompilerMeta.default(config.allocator);
+        const compiler_meta = try compiler.CompilerMeta.default(config.allocator);
 
         // compiles a text file into a semi-linear instruction stack
         var ir = try compiler.Compiler.compile(reader, config, compiler_meta);
         //var chunk = try compiler.Compiler.compile(ir_chunck, config.allocator)
 
         // transform the semi-linear instructions into somthing the thread can execute
-        var main = try compiler.Assembler.assemble(ir, config.allocator, compiler_meta);
+        const main = try compiler.Assembler.assemble(ir, config.allocator, compiler_meta);
 
         //debugging
         var buffer: [512]u8 = [_]u8{0} ** 512;

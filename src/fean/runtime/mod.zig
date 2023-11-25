@@ -24,6 +24,7 @@ pub const Dict = @import("value/dict.zig").Dict;
 pub const DictEntry = @import("value/dict.zig").DictEntry;
 // Function
 pub const Function = @import("value/function.zig").Function;
+pub const Method = @import("value/function.zig").Method;
 pub const CallFrame = @import("value/function.zig").CallFrame;
 pub const Methods = @import("value/function.zig").Methods;
 // Object

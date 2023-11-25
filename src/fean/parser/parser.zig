@@ -61,7 +61,7 @@ pub const Parser = struct {
             try parser.tokens.append(next);
         }
 
-        var global_scope = try config.allocator.create(Node);
+        const global_scope = try config.allocator.create(Node);
 
         global_scope.* = Node{
             .scope = .{
@@ -96,7 +96,7 @@ pub const Parser = struct {
         var lines = List(*Node).init(self.allocator);
         var j: usize = 0;
         while (!self.is_eos()) {
-            try lines.append(self.declaration(scope));
+            try lines.append(self.declaration(scope, false));
             j += 1;
         }
 
@@ -111,7 +111,7 @@ pub const Parser = struct {
         scope.scope.statments = mem;
     }
 
-    fn declaration(self: *@This(), scope: *Node) *Node {
+    fn declaration(self: *@This(), scope: *Node, impl: bool) *Node {
         if (self.check(.Struct) and self.check_next(.identifier)) {
             _ = self.pop().?;
             return self.declaration_struct(scope);
@@ -127,17 +127,44 @@ pub const Parser = struct {
         and self.check_next(.colon) // :
         and (self.check_ahead(.colon, 2) or self.check_ahead(.equal, 2)) // : or =
         ) {
-            return self.declaration_variable(scope, true);
+            const variable = self.declaration_variable(scope, true);
+
+            if (impl)
+                self.declaration_try_method(scope, variable);
+
+            return variable;
         }
         return self.statment(scope);
+    }
+
+    fn declaration_try_method(self: *@This(), scope: *Node, parent_variable: *Node) void {
+        _ = self;
+        _ = scope;
+        const variable = parent_variable.variable;
+        if (variable.value != null and variable.value.?.* == .function) {
+            const function = variable.value.?.function; // todo look for mem leak
+
+            const result: Node = .{
+                .method = .{
+                    .name = variable.name,
+                    .params = function.params,
+                    .result = function.result,
+                    .body = function.body,
+                    .is_extern = function.is_extern,
+                },
+            };
+
+            //self.allocator.free(function);
+            parent_variable.* = result;
+        }
     }
 
     fn declaration_impl(self: *@This(), scope: *Node) *Node {
         const struct_name = self.pop().?;
         self.consume_kind(.curley_left, "struct is missing { to start struct body");
-        const body = self.statment_block(scope);
+        const body = self.statment_block(scope, true);
 
-        var result = self.allocator.create(Node) catch unreachable;
+        const result = self.allocator.create(Node) catch unreachable;
 
         result.* = Node{ .impl = .{
             .this = SymbolKind{ .unresolved = struct_name.data.identifier },
@@ -153,7 +180,7 @@ pub const Parser = struct {
         self.consume_kind(.curley_left, "struct is missing { to start struct body");
         const fields = self.struct_fields();
 
-        var result = self.allocator.create(Node) catch unreachable;
+        const result = self.allocator.create(Node) catch unreachable;
 
         result.* = Node{ .structure = .{
             .name = struct_name.data.identifier,
@@ -288,7 +315,7 @@ pub const Parser = struct {
         }
         // a block of code
         else if (self.of_kind(.curley_left)) {
-            return self.statment_block(scope);
+            return self.statment_block(scope, false);
         }
         return self.statment_expression(scope);
     }
@@ -302,7 +329,6 @@ pub const Parser = struct {
         defer if (fn_exited_root) {
             self.rooted = true;
         };
-
         // parameter body
         self.consume_kind(.paren_left, "expected fn parameters to start with a (");
         const param_count = self.parameter_count();
@@ -319,12 +345,12 @@ pub const Parser = struct {
             result = SymbolKind{ .unresolved = kind_name };
         }
 
-        var function = self.allocator.create(Node) catch unreachable;
+        const function = self.allocator.create(Node) catch unreachable;
 
         // body
         if (!is_extern) {
             self.consume_kind(.curley_left, "expected a body after function\n fn() -> type {\n...\n}");
-            var body = self.statment_block(scope);
+            const body = self.statment_block(scope, false);
 
             function.* = Node{
                 .function = .{
@@ -399,15 +425,15 @@ pub const Parser = struct {
     }
 
     fn statment_if(self: *@This(), scope: *Node) *Node {
-        var condition = self.expression(scope);
-        var if_then = self.statment(scope);
+        const condition = self.expression(scope);
+        const if_then = self.statment(scope);
         var if_else: ?*Node = null;
 
         if (self.of_kind(.Else)) {
             if_else = self.statment(scope);
         }
 
-        var conditional = self.allocator.create(Node) catch unreachable;
+        const conditional = self.allocator.create(Node) catch unreachable;
 
         conditional.* = Node{ .conditional_if = .{
             .condition = condition,
@@ -419,10 +445,10 @@ pub const Parser = struct {
     }
 
     fn statment_while(self: *@This(), scope: *Node) *Node {
-        var condition = self.expression(scope);
-        var body = self.statment(scope);
+        const condition = self.expression(scope);
+        const body = self.statment(scope);
 
-        var conditional = self.allocator.create(Node) catch unreachable;
+        const conditional = self.allocator.create(Node) catch unreachable;
 
         conditional.* = Node{ .conditional_while = .{
             .condition = condition,
@@ -437,7 +463,7 @@ pub const Parser = struct {
         const value = self.expression(scope);
         self.consume_kind(.semi_colon, "Expected print statment to end with a ;");
 
-        var result = self.allocator.create(Node) catch unreachable;
+        const result = self.allocator.create(Node) catch unreachable;
         var params = self.allocator.alloc(*Node, 1) catch unreachable;
         params[0] = value;
         result.* = Node{ .builtin = .{ .op = op, .parameters = params } };
@@ -448,7 +474,7 @@ pub const Parser = struct {
         if (!self.check(.semi_colon)) {
             const expr = self.expression(scope);
             self.consume_kind(.semi_colon, "Expected return statment to end with a ;");
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
             if (self.rooted) {
                 result.* = Node{ .statment = .{ .kind = .ReturnRoot, .value = expr } };
             } else {
@@ -458,7 +484,7 @@ pub const Parser = struct {
             return result;
         } else {
             self.consume_kind(.semi_colon, "Expected return statment to end with a ;");
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
 
             if (self.rooted) {
                 result.* = Node{ .statment = .{ .kind = .ReturnRoot, .value = null } };
@@ -469,7 +495,7 @@ pub const Parser = struct {
         }
     }
 
-    fn statment_block(self: *@This(), scope: *Node) *Node {
+    fn statment_block(self: *@This(), scope: *Node, impl: bool) *Node {
         var block = self.allocator.create(Node) catch unreachable;
         block.* = Node{ .scope = .{
             .parent = scope,
@@ -481,7 +507,7 @@ pub const Parser = struct {
         var stmnts = Stack(*Node).create(self.allocator, 16) catch unreachable;
 
         while (!self.of_kind(.curley_right)) {
-            stmnts.push(self.declaration(block)) catch unreachable;
+            stmnts.push(self.declaration(block, impl)) catch unreachable;
         }
 
         stmnts.shrink_to_fit() catch unreachable;
@@ -493,7 +519,7 @@ pub const Parser = struct {
         const value = self.expression(scope);
         self.consume_kind(.semi_colon, "Expected statment to end");
 
-        var result = self.allocator.create(Node) catch unreachable;
+        const result = self.allocator.create(Node) catch unreachable;
         result.* = Node{ .statment = .{ .kind = .Expression, .value = value } };
         return result;
     }
@@ -532,10 +558,10 @@ pub const Parser = struct {
     }
 
     fn expression_inc_dec(self: *@This(), scope: *Node) *Node {
-        var value = self.primary(scope);
+        const value = self.primary(scope);
         const operator = self.pop().?; // ++ or --
 
-        var result = self.allocator.create(Node) catch unreachable;
+        const result = self.allocator.create(Node) catch unreachable;
         result.* = Node{ .unary_expression = .{ .op = operator, .value = value } };
         return result;
     }
@@ -566,10 +592,10 @@ pub const Parser = struct {
             _ = self.pop().?; // =
         }
 
-        var value = self.equality(scope);
+        const value = self.equality(scope);
         if (is_short) {
-            var result = self.allocator.create(Node) catch unreachable;
-            var expanded = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
+            const expanded = self.allocator.create(Node) catch unreachable;
             expanded.* = Node{ .binary_expression = .{ .lhs = get, .op = short.?, .rhs = value, .kind = .none } };
             result.* = Node{ .set = .{ .field = field, .object = object, .kind = .none, .value = expanded } };
             return result;
@@ -580,7 +606,7 @@ pub const Parser = struct {
     }
 
     fn expression_assignment(self: *@This(), scope: *Node) *Node {
-        var identity = self.pop().?;
+        const identity = self.pop().?;
         const is_short = (self.check(.plus_equal) or self.check(.minus_equal) or self.check(.slash_equal) or self.check(.star_equal));
         var short: ?Token = null;
         if (is_short) {
@@ -603,14 +629,14 @@ pub const Parser = struct {
             _ = self.pop().?; // =
         }
 
-        var value = self.equality(scope);
+        const value = self.equality(scope);
 
-        var result = self.allocator.create(Node) catch unreachable;
+        const result = self.allocator.create(Node) catch unreachable;
         if (is_short) {
-            var this = self.allocator.create(Node) catch unreachable;
+            const this = self.allocator.create(Node) catch unreachable;
             this.* = Node{ .literal = identity };
 
-            var expanded = self.allocator.create(Node) catch unreachable;
+            const expanded = self.allocator.create(Node) catch unreachable;
             expanded.* = Node{ .binary_expression = .{ .lhs = this, .op = short.?, .rhs = value, .kind = .none } };
             result.* = Node{ .assignment = .{ .name = identity.data.identifier, .symbol = null, .value = expanded } };
         } else {
@@ -626,8 +652,8 @@ pub const Parser = struct {
         const match = [_]TokenKind{ .bang_equal, .equal_equal };
         while (self.of_kinds(&match)) {
             const lhs = result;
-            var operator = self.prev();
-            var rhs = self.comparison(scope);
+            const operator = self.prev();
+            const rhs = self.comparison(scope);
 
             result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
@@ -642,8 +668,8 @@ pub const Parser = struct {
         const match = [_]TokenKind{ .greater, .greater_equal, .less, .less_equal };
         while (self.of_kinds(&match)) {
             const lhs = result;
-            var operator = self.prev();
-            var rhs = self.term(scope);
+            const operator = self.prev();
+            const rhs = self.term(scope);
 
             result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
@@ -658,8 +684,8 @@ pub const Parser = struct {
         const match = [_]TokenKind{ .minus, .plus };
         while (self.of_kinds(&match)) {
             const lhs = result;
-            var operator = self.prev();
-            var rhs = self.factor(scope);
+            const operator = self.prev();
+            const rhs = self.factor(scope);
 
             result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
@@ -674,8 +700,8 @@ pub const Parser = struct {
         const match = [_]TokenKind{ .slash, .star };
         while (self.of_kinds(&match)) {
             const lhs = result;
-            var operator = self.prev();
-            var rhs = self.unary(scope);
+            const operator = self.prev();
+            const rhs = self.unary(scope);
 
             result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .binary_expression = .{ .lhs = lhs, .op = operator, .rhs = rhs, .kind = .none } };
@@ -687,10 +713,10 @@ pub const Parser = struct {
     fn unary(self: *@This(), scope: *Node) *Node {
         const match = [_]TokenKind{ .bang, .minus };
         if (self.of_kinds(&match)) {
-            var operator = self.prev();
-            var value = self.call(scope);
+            const operator = self.prev();
+            const value = self.call(scope);
 
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .unary_expression = .{ .op = operator, .value = value } };
             return result;
         }
@@ -763,7 +789,7 @@ pub const Parser = struct {
             return self.primary_construct(scope);
         }
         if (self.check(.True) or self.check(.False)) {
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .literal = self.pop().? };
             return result;
         }
@@ -773,32 +799,32 @@ pub const Parser = struct {
         //    return result;
         //}
         if (self.check(.decimal) or self.check(.integer)) {
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .literal = self.pop().? };
             return result;
         }
 
         if (self.check(.text)) {
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .literal = self.pop().? };
             return result;
         }
 
         if (self.check(.identifier)) {
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
             result.* = Node{ .literal = self.pop().? };
             return result;
         }
 
         if (self.check(.self)) {
-            var result = self.allocator.create(Node) catch unreachable;
+            const result = self.allocator.create(Node) catch unreachable;
             const popped = self.pop().?;
             result.* = Node{ .literal = Token.new_identifier("self", popped.span) };
             return result;
         }
 
         if (self.of_kind(.paren_left)) {
-            var result = self.expression(scope);
+            const result = self.expression(scope);
             self.consume_kind(.paren_right, "Expect ')' after grouping.");
             return result;
         }
@@ -812,7 +838,7 @@ pub const Parser = struct {
         _ = self.pop(); // pop the {
         const fields = self.primary_construct_fields(scope);
 
-        var result = self.allocator.create(Node) catch unreachable;
+        const result = self.allocator.create(Node) catch unreachable;
         result.* = Node{ .construct = .{
             .kind = SymbolKind{ .unresolved = kind_name },
             .fields = fields,
@@ -938,7 +964,7 @@ pub const Parser = struct {
         if (self.check(kind)) {
             return;
         } else {
-            var p = self.peek().?;
+            const p = self.peek().?;
             std.debug.panic("[{}:{}]: {s} ({?})\n", .{ p.span.line, p.span.pos, err, p.data });
         }
     }
@@ -956,7 +982,7 @@ pub const Parser = struct {
     }
 
     fn pop(self: *@This()) ?Token {
-        var result = self.peek();
+        const result = self.peek();
         //std.debug.print("[{}:{}] popped:\t{}\n", .{ result.?.span.line, result.?.span.pos, result.?.data });
 
         self.cursor += 1;

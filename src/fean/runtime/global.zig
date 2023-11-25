@@ -60,7 +60,7 @@ pub const Global = struct {
 
     pub fn mark(self: *@This()) void {
         const dict = self.items.object().dict();
-        var entries: []DictEntry = dict.entries()[0..dict.capacity];
+        const entries: []DictEntry = dict.entries()[0..dict.capacity];
         for (entries) |e| {
             if (e.key != null and !e.tomb) {
                 var item = @as(*GlobalEntry, @ptrCast(@alignCast(e.value.any)));

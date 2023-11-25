@@ -194,6 +194,42 @@ pub const Resolver = struct {
                     try self.expand_visit(v.value.?, scope);
                 }
             },
+            .method => |meth| {
+                // generate params in method
+                if (!meth.is_extern and meth.params.len > 0) {
+                    // tmp scope
+                    var fn_symbol = Scope{
+                        .parent = scope,
+                        .kinds = meth.body.body.scope.kinds,
+                        .symbols = meth.body.body.scope.symbols,
+                    };
+
+                    //expand function params
+                    for (meth.params, 1..) |param, i| {
+                        // todo maybe dupe before cleanup
+                        // todo size
+                        var kind: SymbolKind = undefined;
+                        if (param.kind == .unresolved) {
+                            const found = scope.lookup_kind(param.kind.unresolved) orelse {
+                                kind = param.kind;
+                                break;
+                            };
+                            kind = SymbolKind{ .resolved = found };
+                        } else {
+                            kind = param.kind;
+                        }
+                        const param_symbol = try fn_symbol.install_symbol(self.allocator, param.name, kind, 42069);
+                        param_symbol.*.param = true;
+                        param_symbol.*.binding = @as(u10, @intCast(i));
+                    }
+
+                    fn_symbol.into(meth.body.body);
+                }
+
+                if (!meth.is_extern) {
+                    try self.expand_visit(meth.body.body, scope);
+                }
+            },
             .function => |func| {
                 // generate params in function
                 if (!func.is_extern and func.params.len > 0) {
@@ -218,7 +254,7 @@ pub const Resolver = struct {
                         } else {
                             kind = param.kind;
                         }
-                        var param_symbol = try fn_symbol.install_symbol(self.allocator, param.name, kind, 42069);
+                        const param_symbol = try fn_symbol.install_symbol(self.allocator, param.name, kind, 42069);
                         param_symbol.*.param = true;
                         param_symbol.*.binding = @as(u10, @intCast(i));
                     }
@@ -226,9 +262,7 @@ pub const Resolver = struct {
                     fn_symbol.into(func.body.body);
                 }
 
-                if (func.is_extern) {
-                    //
-                } else {
+                if (!func.is_extern) {
                     try self.expand_visit(func.body.body, scope);
                 }
             },
@@ -236,7 +270,7 @@ pub const Resolver = struct {
                 try self.expand_visit(cif.condition, scope);
 
                 // todo span maybe?
-                var inverse_condition = try self.allocator.create(Node);
+                const inverse_condition = try self.allocator.create(Node);
                 inverse_condition.* = Node{ .unary_expression = .{
                     .op = Token.new_symbol(.bang, Span.default()),
                     .value = cif.condition,
@@ -252,7 +286,7 @@ pub const Resolver = struct {
                 try self.expand_visit(cw.condition, scope);
 
                 // todo span maybe?
-                var inverse_condition = try self.allocator.create(Node);
+                const inverse_condition = try self.allocator.create(Node);
                 inverse_condition.* = Node{ .unary_expression = .{
                     .op = Token.new_symbol(.bang, Span.default()),
                     .value = cw.condition,
@@ -398,8 +432,100 @@ pub const Resolver = struct {
 
                 return .none;
             },
+            .method => {
+                const method = &node.method;
+                const is_extern = method.is_extern;
+
+                // resolve kinds in body
+                if (!is_extern)
+                    _ = try self.kind_visit(method.body.body, scope);
+
+                // resolve fn kind name
+                var kind_name: []u8 = &self.buffer;
+                var cursor: usize = 0;
+
+                if (is_extern) {
+                    cursor = (try std.fmt.bufPrint(&self.buffer, "ExternFn(", .{})).len;
+                } else {
+                    cursor = (try std.fmt.bufPrint(&self.buffer, "Fn(", .{})).len;
+                }
+
+                if (method.params.len > 0) {
+                    for (method.params, 1..) |param, i| {
+                        const buffer_cursor = self.buffer[cursor..];
+                        const is_end = method.params.len == i;
+
+                        var param_kind_name: []const u8 = "";
+                        switch (param.kind) {
+                            .none => @panic("parameter missing a kind TODO maybe self here?"),
+                            .resolved => |k| param_kind_name = k.name,
+                            .unresolved => |n| param_kind_name = n,
+                        }
+
+                        if (is_end) {
+                            const written = try std.fmt.bufPrint(buffer_cursor, "{s}) -> ", .{param_kind_name});
+                            cursor += written.len;
+                        } else {
+                            const written = try std.fmt.bufPrint(buffer_cursor, "{s}, ", .{param_kind_name});
+                            cursor += written.len;
+                        }
+                    }
+                } else {
+                    const buffer_cursor = self.buffer[cursor..];
+                    const written = try std.fmt.bufPrint(buffer_cursor, ") -> ", .{});
+                    cursor += written.len;
+                }
+
+                var is_void = false;
+                if (method.result == .none) {
+                    const buffer_cursor = self.buffer[cursor..];
+                    const written = try std.fmt.bufPrint(buffer_cursor, "void", .{});
+                    cursor += written.len;
+
+                    is_void = true;
+                } else {
+                    var result_kind_name: []const u8 = "";
+                    switch (method.result) {
+                        .none => unreachable,
+                        .resolved => |k| result_kind_name = k.name,
+                        .unresolved => |n| result_kind_name = n,
+                    }
+
+                    const buffer_cursor = self.buffer[cursor..];
+                    const written = try std.fmt.bufPrint(buffer_cursor, "{s}", .{result_kind_name});
+                    cursor += written.len;
+
+                    if (std.mem.eql(u8, "void", result_kind_name)) {
+                        is_void = true;
+                    }
+                }
+
+                // result of the above formatting
+                const result = kind_name[0..cursor];
+
+                // check for dupe
+                const result_kind = scope.lookup_kind(result);
+                if (result_kind == null) {
+                    var return_kind: *Kind = undefined;
+                    if (is_void) {
+                        return_kind = scope.lookup_kind("void").?;
+                    } else {
+                        var return_kind_name: []const u8 = "";
+                        switch (method.result) {
+                            .none => @panic("function resulting value missing a kind"),
+                            .resolved => |k| return_kind_name = k.name,
+                            .unresolved => |n| return_kind_name = n,
+                        }
+
+                        return_kind = scope.lookup_kind(return_kind_name).?;
+                    }
+
+                    const new_kind = try install_fn_kind(self, scope, result, method.params, return_kind, is_extern);
+                    return SymbolKind{ .resolved = new_kind };
+                } else return SymbolKind{ .resolved = result_kind.? };
+            },
             .function => {
-                var function = &node.function;
+                const function = &node.function;
                 const is_extern = function.is_extern;
 
                 // resolve kinds in body
@@ -418,7 +544,7 @@ pub const Resolver = struct {
 
                 if (function.params.len > 0) {
                     for (function.params, 1..) |param, i| {
-                        var buffer_cursor = self.buffer[cursor..];
+                        const buffer_cursor = self.buffer[cursor..];
                         const is_end = function.params.len == i;
 
                         var param_kind_name: []const u8 = "";
@@ -437,14 +563,14 @@ pub const Resolver = struct {
                         }
                     }
                 } else {
-                    var buffer_cursor = self.buffer[cursor..];
+                    const buffer_cursor = self.buffer[cursor..];
                     const written = try std.fmt.bufPrint(buffer_cursor, ") -> ", .{});
                     cursor += written.len;
                 }
 
                 var is_void = false;
                 if (function.result == .none) {
-                    var buffer_cursor = self.buffer[cursor..];
+                    const buffer_cursor = self.buffer[cursor..];
                     const written = try std.fmt.bufPrint(buffer_cursor, "void", .{});
                     cursor += written.len;
 
@@ -457,7 +583,7 @@ pub const Resolver = struct {
                         .unresolved => |n| result_kind_name = n,
                     }
 
-                    var buffer_cursor = self.buffer[cursor..];
+                    const buffer_cursor = self.buffer[cursor..];
                     const written = try std.fmt.bufPrint(buffer_cursor, "{s}", .{result_kind_name});
                     cursor += written.len;
 
@@ -470,7 +596,7 @@ pub const Resolver = struct {
                 const result = kind_name[0..cursor];
 
                 // check for dupe
-                var result_kind = scope.lookup_kind(result);
+                const result_kind = scope.lookup_kind(result);
                 if (result_kind == null) {
                     var return_kind: *Kind = undefined;
                     if (is_void) {
@@ -645,6 +771,22 @@ pub const Resolver = struct {
                     try self.symbol_visit(v.value.?, scope);
                 }
             },
+            .method => |meth| {
+                if (!meth.is_extern) {
+                    var func_scope = Scope{
+                        .parent = scope,
+                        .kinds = meth.body.body.scope.kinds,
+                        .symbols = meth.body.body.scope.symbols,
+                    };
+
+                    //for (meth.params) |*param|
+                    //    param.*.symbol = try func_scope.install_symbol(self.allocator, param.name, param.kind, 42069);
+
+                    try self.symbol_visit(meth.body.body, scope);
+
+                    func_scope.into(meth.body.body);
+                }
+            },
             .function => |func| {
                 if (!func.is_extern) {
                     var func_scope = Scope{
@@ -796,8 +938,8 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
             const padding = closest - size;
             const shifted_padding = @shlWithOverflow(padding, 1)[0];
 
-            var field_kind = field.kind.resolved;
-            var result = try fields.install(allocator, field.name, field_kind);
+            const field_kind = field.kind.resolved;
+            const result = try fields.install(allocator, field.name, field_kind);
             result.*.padding = @as(u2, @truncate(shifted_padding));
             result.*.alignment = alignment;
 
@@ -810,7 +952,7 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
 
             size += field_kind.size;
 
-            var result = try fields.install(allocator, field.name, field_kind);
+            const result = try fields.install(allocator, field.name, field_kind);
             result.*.padding = 0;
             result.*.alignment = 1;
         } else {
@@ -822,7 +964,7 @@ fn process_struct_fields(allocator: Allocator, todo: *TodoStruct) !bool {
                 .unresolved, .none => return false,
             };
 
-            var result = try fields.install(allocator, field.name, field_kind);
+            const result = try fields.install(allocator, field.name, field_kind);
             result.*.padding = @as(u2, @truncate(shifted_padding));
             result.*.alignment = alignment;
 
@@ -872,7 +1014,7 @@ fn closest_aligned(starting: usize, alignment: u8) usize {
 
 fn install_fn_kind(self: *Resolver, scope: *Scope, name: []const u8, params: []Parameter, result: *Kind, is_extern: bool) !*Kind {
     const allocator = self.allocator;
-    var cloned_name = try allocator.alloc(u8, name.len);
+    const cloned_name = try allocator.alloc(u8, name.len);
     @memcpy(cloned_name, name);
 
     var kind: *Kind = switch (is_extern) {
@@ -922,10 +1064,10 @@ inline fn unpack(node: *Node, kind: SymbolKind) SymbolKind {
 }
 
 fn impl_dive(impl_node: *Node, node: *Node, scope: *Scope, allocator: Allocator) !void {
-    var impl = impl_node.impl;
+    const impl = impl_node.impl;
     switch (node.*) {
         .function => |*f| {
-            var is_self = switch (f.params[0].kind) {
+            const is_self = switch (f.params[0].kind) {
                 .none => false,
                 .unresolved => |name| std.mem.eql(u8, name, "Self"),
                 .resolved => false,
@@ -967,7 +1109,7 @@ fn impl_dive(impl_node: *Node, node: *Node, scope: *Scope, allocator: Allocator)
             try impl_dive(impl_node, c.value, scope, allocator);
         },
         .variable => |v| {
-            var value = v.value orelse return;
+            const value = v.value orelse return;
             try impl_dive(impl_node, value, scope, allocator);
         },
         else => |n| std.debug.print("impl_dive: {s}\n", .{@tagName(n)}),

@@ -27,15 +27,10 @@ pub const InternalFunction = extern struct { arity: u8, result: bool, body: *Chu
 pub const ExternFunction = extern struct {
     arity: u8,
     result: bool,
-    body: *const fn (vm: *Thread, args: []Item, result: ?*Item) void,
+    body: *const fn (vm: *Thread, args: []Item, result: ?*Item) callconv(.C) void,
 };
 
-pub const Method = struct {
-    is_extern: bool,
-    method: MethodBody,
-};
-
-pub const MethodBody = extern union {
+pub const Method = extern union {
     internal: *InternalFunction,
     external: *ExternMethod,
 };

@@ -168,7 +168,7 @@ pub const BumpBlock = struct {
     cursor: usize,
 
     pub fn create(allocator: Allocator) !*@This() {
-        var result = try allocator.create(@This());
+        const result = try allocator.create(@This());
 
         result.* = @This(){
             .meta = BlockMeta.default(),
@@ -247,7 +247,7 @@ pub const Heap = struct {
     pointers: Linked(*Ref),
     underlying_allocator: Allocator,
     mark: bool,
-    collecting: std.atomic.Atomic(bool),
+    collecting: std.atomic.Value(bool),
 
     head: *BumpBlock,
     overflow: *BumpBlock,
@@ -332,7 +332,7 @@ pub const Heap = struct {
     pub fn gc(self: *@This()) !void {
         std.debug.assert(!self.collecting.load(.Acquire)); // can only collect once at a time
         self.collecting.store(true, .Release);
-        var thread = try std.Thread.spawn(.{}, @This().__gc, .{self});
+        const thread = try std.Thread.spawn(.{}, @This().__gc, .{self});
         _ = thread;
     }
 
@@ -393,8 +393,8 @@ pub const Heap = struct {
             }
         }
 
-        var large_count: usize = 0;
-        var large_bytes: usize = 0;
+        const large_count: usize = 0;
+        const large_bytes: usize = 0;
 
         std.debug.print("head_bytes: {} B\n", .{head_bytes});
         std.debug.print("overflow_bytes: {} B\n", .{overflow_bytes});

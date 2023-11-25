@@ -11,10 +11,10 @@ pub fn main() !void {
 
     config.fn_lookup = lookup_fn;
 
-    var file = try std.fs.cwd().openFile("bench.fe", std.fs.File.OpenFlags{});
+    var file = try std.fs.cwd().openFile("fib.fe", std.fs.File.OpenFlags{});
     defer file.close();
 
-    var vm = try fean.Fean.create(file.reader(), config);
+    const vm = try fean.Fean.create(file.reader(), config);
     _ = vm;
 }
 

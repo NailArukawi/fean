@@ -104,7 +104,7 @@ pub const Node = union(enum) {
         }
 
         pub fn lookupKind(this: *@This(), name: []const u8) ?*Kind {
-            var result = this.kinds.lookup(name);
+            const result = this.kinds.lookup(name);
             if (result != null)
                 return result;
 
@@ -150,6 +150,14 @@ pub const Node = union(enum) {
         name: []const u8,
         symbol: ?*Symbol,
         value: *Node,
+    },
+    method: struct {
+        //span: Span,
+        name: []const u8,
+        params: []Parameter,
+        result: SymbolKind,
+        body: FunctionBody,
+        is_extern: bool,
     },
     function: struct {
         //span: Span,

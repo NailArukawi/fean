@@ -4,4 +4,8 @@
     <option name="zlsPath" value="/usr/bin/zls" />
     <option name="initialAutodetectHasBeenDone" value="true" />
   </component>
+  <component name="ZigProjectSettings">
+    <option name="toolchainHomeDirectory" value="/usr/lib/zig" />
+    <option name="explicitPathToStd" value="/usr/lib/zig/lib/std" />
+  </component>
 </project>

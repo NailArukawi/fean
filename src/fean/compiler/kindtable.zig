@@ -19,7 +19,7 @@ pub const KindTable = struct {
     tail: ?*Kind = null,
 
     pub fn create(allocator: Allocator) !*@This() {
-        var this = try allocator.create(@This());
+        const this = try allocator.create(@This());
         this.* = .{};
         return this;
     }
@@ -108,7 +108,7 @@ pub const Kind = struct {
     next: ?*@This() = null,
 
     pub fn create(allocator: Allocator, name: []const u8, size: usize) !*@This() {
-        var this = try allocator.create(@This());
+        const this = try allocator.create(@This());
         this.* = .{ .name = name, .size = size };
         return this;
     }
@@ -138,7 +138,7 @@ pub const FieldList = struct {
         if (this.head != null)
             index = this.head.?.index + 1;
 
-        var installee = try Field.create(
+        const installee = try Field.create(
             allocator,
             name,
             kind,
@@ -188,7 +188,7 @@ pub const Field = struct {
     next: ?*@This() = null,
 
     pub fn create(allocator: Allocator, name: []const u8, kind: *Kind, index: usize) !*@This() {
-        var createe = try allocator.create(@This());
+        const createe = try allocator.create(@This());
         createe.* = .{ .name = name, .kind = kind, .index = index };
         return createe;
     }

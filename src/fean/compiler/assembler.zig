@@ -1105,10 +1105,10 @@ pub const Assembler = struct {
                 const result = ij.condition.register();
                 opcode.set_a(result);
 
-                var jump = self.jumps.get(ij.offset);
+                const jump = self.jumps.get(ij.offset);
                 if (jump != null) {
-                    var pos: isize = @as(isize, @intCast(jump.?.pos));
-                    var offset = @as(i22, @intCast(pos - @as(isize, @intCast(i))));
+                    const pos: isize = @as(isize, @intCast(jump.?.pos));
+                    const offset = @as(i22, @intCast(pos - @as(isize, @intCast(i))));
                     opcode.set_y(@as(u22, @bitCast(offset)));
 
                     try self.push_op(opcode);
@@ -1122,10 +1122,10 @@ pub const Assembler = struct {
                 var opcode = Opcode.new();
                 opcode.op = Op.jmp;
 
-                var jump = self.jumps.get(j.offset);
+                const jump = self.jumps.get(j.offset);
                 if (jump != null) {
-                    var pos: isize = @as(isize, @intCast(jump.?.pos));
-                    var offset = @as(i32, @intCast(pos - @as(isize, @intCast(i))));
+                    const pos: isize = @as(isize, @intCast(jump.?.pos));
+                    const offset = @as(i32, @intCast(pos - @as(isize, @intCast(i))));
                     opcode.set_x(@as(u32, @bitCast(offset)));
 
                     try self.push_op(opcode);
@@ -1149,17 +1149,17 @@ pub const Assembler = struct {
             .destination => |dest| {
                 lines_written = 0;
 
-                var jump = self.jumps.get(dest);
+                const jump = self.jumps.get(dest);
                 if (jump == null) {
                     try self.jumps.push(dest, self.op_count);
                 } else {
                     var opcode = &self.result.chunk.code.items[jump.?.pos];
 
                     if (opcode.op == .if_jmp) {
-                        var offset = @as(i22, @intCast(i - jump.?.pos));
+                        const offset = @as(i22, @intCast(i - jump.?.pos));
                         opcode.set_y(@as(u22, @bitCast(offset)));
                     } else if (opcode.op == .jmp) {
-                        var offset = @as(i32, @intCast(i - jump.?.pos));
+                        const offset = @as(i32, @intCast(i - jump.?.pos));
                         opcode.set_x(@as(u32, @bitCast(offset)));
                     }
                 }

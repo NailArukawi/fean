@@ -5,6 +5,7 @@ const IRBlock = mod.IRBlock;
 const Symbol = mod.Symbol;
 const Kind = mod.Kind;
 const Function = @import("../runtime/mod.zig").Function;
+const Method = @import("../runtime/mod.zig").Method;
 
 pub const AddressKind = enum(u8) {
     not_set,
@@ -358,20 +359,11 @@ pub const Instr = union(enum) {
     block: *IRBlock,
     destination: Address,
     method_to_assemble: struct {
-        // callee object
-        result: Address,
-
-        // function objects
-        memory: *Function,
-        lit: Address,
         // block is an raw adress
         block: ?Address,
-        self: Address,
+        Self: *Kind,
     },
     fn_to_assemble: struct {
-        // callee object
-        result: Address,
-
         // function objects
         memory: *Function,
         lit: Address,
