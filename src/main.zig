@@ -1,6 +1,8 @@
 const std = @import("std");
 const fean = @import("fean/fean.zig");
 const Arguments = fean.runtime.ExternFunctionArguments;
+const Thread = fean.runtime.Thread;
+const Item = fean.runtime.Item;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -40,47 +42,47 @@ fn lookup_fn(name: []const u8) ?fean_fn {
     unreachable;
 }
 
-fn heap_debug(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+fn heap_debug(vm: *Thread, args: Arguments, result: ?*Item) callconv(.C) void {
     _ = result;
     _ = args;
     vm.heap.debug();
 }
 
-fn heap_recycle(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+fn heap_recycle(vm: *Thread, args: Arguments, result: ?*Item) callconv(.C) void {
     _ = result;
     _ = args;
     vm.gc() catch unreachable;
 }
 
-fn zamn(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+fn zamn(vm: *Thread, args: Arguments, result: ?*Item) callconv(.C) void {
     _ = vm;
     _ = args;
     const z: i64 = 420691337;
-    result.?.* = fean.runtime.Item.from(i64, z);
+    result.?.* = Item.from(i64, z);
 }
 
-fn print_i64(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+fn print_i64(vm: *Thread, args: Arguments, result: ?*Item) callconv(.C) void {
     _ = vm;
     _ = result;
-    std.debug.print("[Fean]: {}\n", .{args[0].i64});
+    std.debug.print("[Fean]: {}\n", .{args.arguments[0].i64});
 }
 
-fn print_f64(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+fn print_f64(vm: *Thread, args: Arguments, result: ?*Item) callconv(.C) void {
     _ = vm;
     _ = result;
-    std.debug.print("[Fean]: {d:.3}\n", .{args[0].f64});
+    std.debug.print("[Fean]: {d:.3}\n", .{args.arguments[0].f64});
 }
 
 var time_stamp: ?i128 = null;
 
-fn time(vm: *fean.runtime.Thread, args: Arguments, result: ?*fean.runtime.Item) callconv(.C) void {
+fn time(vm: *Thread, args: Arguments, result: ?*Item) callconv(.C) void {
     _ = vm;
     _ = args;
     if (time_stamp == null) {
         time_stamp = std.time.nanoTimestamp();
     } else {
         const delta = std.time.nanoTimestamp() - time_stamp.?;
-        result.?.* = fean.runtime.Item.from(i64, @as(i64, @intCast(delta)));
+        result.?.* = Item.from(i64, @as(i64, @intCast(delta)));
         time_stamp = null;
     }
 }

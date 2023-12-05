@@ -376,7 +376,7 @@ pub fn Scanner(comptime Reader: type) type {
             }
 
             const text = try self.config.allocator.alloc(u8, total_len);
-            std.mem.copy(u8, text, self.buffer.as_slice());
+            std.mem.copyForwards(u8, text, self.buffer.as_slice());
 
             _ = try self.pop();
             self.buffer.clear();
@@ -399,7 +399,7 @@ pub fn Scanner(comptime Reader: type) type {
             }
 
             const identifier = try self.config.allocator.alloc(u8, total_len);
-            std.mem.copy(u8, identifier, self.buffer.as_slice());
+            std.mem.copyForwards(u8, identifier, self.buffer.as_slice());
             self.buffer.clear();
 
             return Token.new_identifier(identifier, self.cursor);

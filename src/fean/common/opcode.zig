@@ -1,7 +1,7 @@
 const std = @import("std");
 
-// 124|256 used
-pub const Op = enum(u8) {
+// 124|1024 used
+pub const Op = enum(u10) {
     // Misc (9)
     no_op = 0,
     ret,
@@ -148,73 +148,29 @@ pub const Op = enum(u8) {
     jmp,
 
     // extended (1)
-    extended = 255,
+    extended = 1023,
 };
 
-pub const Opcode = extern struct {
-    op: Op align(1),
-    args: u32 align(1),
+pub const Opcode = packed union { // Comment to block formating
+    z: packed struct(u40) {
+        op: Op = .no_op,
+        a: u10 = 0,
+        b: u10 = 0,
+        c: u10 = 0,
+    },
+    y: packed struct(u40) {
+        op: Op = .no_op,
+        a: u10 = 0,
+        y: u20 = 0,
+    },
+    x: packed struct(u40) {
+        op: Op = .no_op,
+        x: u30 = 0,
+    },
 
-    pub inline fn a(self: @This()) u10 {
-        return @as(u10, @truncate(self.args));
-    }
-
-    pub inline fn b(self: @This()) u10 {
-        return @as(u10, @truncate(self.args >> 10));
-    }
-
-    pub inline fn c(self: @This()) u10 {
-        return @as(u10, @truncate(self.args >> 20));
-    }
-
-    pub inline fn d(self: @This()) u2 {
-        return @as(u2, @truncate(self.args >> 30));
-    }
-
-    pub inline fn x(self: @This()) u32 {
-        return self.args;
-    }
-
-    pub inline fn y(self: @This()) u22 {
-        return @as(u22, @truncate(self.args >> 10));
-    }
-
-    pub inline fn z(self: @This()) u12 {
-        return @as(u12, @truncate(self.args >> 20));
-    }
-
-    pub inline fn set_a(self: *@This(), val: u10) void {
-        self.args = (self.args & 0xFFFFFC00) | val;
-    }
-
-    pub inline fn set_b(self: *@This(), val: u10) void {
-        self.args = (self.args & 0xFFC03FFF) | (@as(u32, @intCast(val)) << 10);
-    }
-
-    pub inline fn set_c(self: *@This(), val: u10) void {
-        self.args = (self.args & 0x3FFFFF) | (@as(u32, @intCast(val)) << 20);
-    }
-
-    pub inline fn set_d(self: *@This(), val: u2) void {
-        self.args = (self.args & 0x3FFFFFFF) | (@as(u32, @intCast(val)) << 30);
-    }
-
-    pub inline fn set_x(self: *@This(), val: u32) void {
-        self.args = val;
-    }
-
-    pub inline fn set_y(self: *@This(), val: u22) void {
-        self.args = (self.args & 0x3FF) | (@as(u32, @intCast(val)) << 10);
-    }
-
-    pub inline fn set_z(self: *@This(), val: u12) void {
-        self.args = (self.args & 0xFFFFF) | (@as(u32, @intCast(val)) << 20);
-    }
-
-    pub inline fn new() @This() {
-        return @This(){
+    pub fn default() @This() {
+        return @This(){ .x = .{
             .op = .no_op,
-            .args = 0,
-        };
+        } };
     }
 };

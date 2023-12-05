@@ -28,6 +28,10 @@ pub const Object = struct {
         return self.body(Dict);
     }
 
+    pub inline fn method(self: *@This()) *Method {
+        return self.body(Method);
+    }
+
     pub inline fn function(self: *@This()) *Function {
         return self.body(Function);
     }

@@ -196,17 +196,11 @@ pub const Node = union(enum) {
     },
     call: struct {
         //span: Span,
-        //callee: *Node,
-        name: []const u8,
+        callee: union(enum) { method: Access, function: []const u8 },
         symbol: ?*Symbol,
         arguments: ?[]*Node,
     },
-    get: struct {
-        //span: Span,
-        field: FieldOrName,
-        kind: SymbolKind,
-        object: *Node,
-    },
+    get: Access,
     set: struct {
         //span: Span,
         field: FieldOrName,
@@ -214,8 +208,17 @@ pub const Node = union(enum) {
         object: *Node,
         value: *Node,
     },
-    object: *Node,
+    object: struct { // TODO hate name
+        symbol: ?*Symbol,
+        kind: ?*SymbolKind,
+    },
     literal: Token,
+};
+
+pub const Access = struct { // TODO dumb name
+    field: FieldOrName,
+    kind: SymbolKind,
+    object: *Node,
 };
 
 pub const StatmentKind = enum {

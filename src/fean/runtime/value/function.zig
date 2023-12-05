@@ -1,4 +1,5 @@
 const std = @import("std");
+const Map = std.StringHashMap;
 const Allocator = std.mem.Allocator;
 
 const Chunk = @import("../mod.zig").Chunk;
@@ -31,11 +32,11 @@ pub const ExternFunction = extern struct {
 };
 
 pub const Method = extern union {
-    internal: *InternalFunction,
-    external: *ExternMethod,
+    internal: InternalFunction,
+    external: ExternMethod,
 };
 
-pub const ExternMethod = struct {
+pub const ExternMethod = extern struct {
     arity: u8,
     result: bool,
     body: ExternFunctionBody,
@@ -47,11 +48,13 @@ pub const ExternFunctionArguments = extern struct { count: u16, arguments: [*]It
 const METHODS_INITIAL_SIZE: usize = 32;
 
 pub const Methods = struct {
-    methods: Dict,
+    methods: Map(*Method),
 
-    pub fn create(allocator: Allocator, size: usize) !@This() {
+    pub fn create(allocator: Allocator, size: usize) @This() {
+        _ = size;
+
         return @This(){
-            .methods = try Dict.create(allocator, size, Text.hash_as_item, Text.eq_as_item),
+            .methods = Map(*Method).init(allocator),
         };
     }
 
@@ -59,16 +62,24 @@ pub const Methods = struct {
         return @This().create(allocator, METHODS_INITIAL_SIZE);
     }
 
-    pub inline fn get(self: *@This(), name: *Text) ?Method {
-        const found = self.methods.get(Item.from(Text, name.*));
-        if (found == null) {
+    pub inline fn getWithText(self: *@This(), name: *Text) ?Method {
+        return self.get(name.as_slice());
+    }
+
+    pub inline fn get(self: *@This(), name: []const u8) ?Method {
+        const found = self.methods.get(name);
+        if (found == null)
             return null;
-        }
+
         return found.?.method;
     }
 
-    pub inline fn set(self: *@This(), name: *Text, value: *Method) !bool {
-        return self.items.set(Item.from(Text, name), Item.from(Method, value));
+    pub inline fn setWithText(self: *@This(), name: *Text, value: *Method) !void {
+        return self.set(name.as_slice(), value);
+    }
+
+    pub inline fn set(self: *@This(), name: []const u8, value: *Method) !void {
+        return self.methods.put(name, value);
     }
 
     pub inline fn contains(self: *@This(), name: *Text) bool {

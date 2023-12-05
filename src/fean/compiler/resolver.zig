@@ -821,9 +821,27 @@ pub const Resolver = struct {
             .unary_expression => |u| {
                 try self.symbol_visit(u.value, scope);
             },
-            .call => {
-                // todo
-                return;
+            .call => |*call| {
+                if (call.arguments != null)
+                    for (call.arguments.?) |argument|
+                        try self.symbol_visit(argument, scope);
+
+                switch (call.callee) {
+                    .function => return,
+                    .method => |call_meth| {
+                        _ = call_meth;
+
+                        //var cursor = call_meth.object;
+                        //while (cursor.* != .literal) // TODO this being a literal is wrong?
+                        //    cursor = cursor.get.object; // TODO error
+
+                        //const symbol = scope.lookup_symbol(cursor.literal.data.identifier);
+                        //if (symbol != null)
+                        //    cursor = .{ .object = .{ .symbol = symbol, .kind = symbol.?.kind } };
+
+                        //call_meth.
+                    },
+                }
             },
             .get => |*g| {
                 try self.symbol_visit(g.object, scope);
@@ -832,7 +850,9 @@ pub const Resolver = struct {
                 // todo
                 return;
             },
-            .object => {
+            .object => |object| {
+                _ = object;
+
                 return;
             },
             .literal => {
@@ -1066,7 +1086,46 @@ inline fn unpack(node: *Node, kind: SymbolKind) SymbolKind {
 fn impl_dive(impl_node: *Node, node: *Node, scope: *Scope, allocator: Allocator) !void {
     const impl = impl_node.impl;
     switch (node.*) {
-        .function => |*f| {
+        .method => |*m| {
+            const is_self = switch (m.params[0].kind) {
+                .none => false,
+                .unresolved => |name| std.mem.eql(u8, name, "Self"),
+                .resolved => false,
+            };
+
+            if (is_self) {
+                var head = Scope{
+                    .parent = scope,
+                    .kinds = m.body.body.scope.kinds,
+                    .symbols = m.body.body.scope.symbols,
+                };
+
+                var self_symbol = head.lookup_symbol("self");
+                if (self_symbol == null) {
+                    self_symbol = try head.install_symbolkind(allocator, "self", impl_node.impl.this);
+                }
+
+                m.params[0].symbol = self_symbol;
+
+                if (m.params[0].kind == .unresolved) {
+                    switch (impl.this) {
+                        .none => @panic("idk if its sound to panic here, but prob is. TODO"),
+                        .unresolved => |u| {
+                            const self = head.lookup_kind(u);
+                            if (self) |self_sym| {
+                                m.params[0].kind = SymbolKind{ .resolved = self_sym };
+                            } else {
+                                m.params[0].kind = impl.this;
+                            }
+                        },
+                        .resolved => |r| m.params[0].kind = SymbolKind{ .resolved = r },
+                    }
+                }
+
+                head.into(m.body.body);
+            }
+        },
+        .function => |*f| { // todo make sure its sound with method changes
             const is_self = switch (f.params[0].kind) {
                 .none => false,
                 .unresolved => |name| std.mem.eql(u8, name, "Self"),

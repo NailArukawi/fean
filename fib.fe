@@ -3,7 +3,7 @@ time : ExternFn : extern fn() -> i64;
 print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
 
 {
-
+    time();
     // fibonacci
     a : i64 = 1;
     b : i64 = 0;
@@ -20,6 +20,7 @@ print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
         alternate = !alternate;
         i++;
     }
+    print_i64(time());
 
     if (a < b) {
         print_i64(b);
@@ -27,4 +28,5 @@ print_i64 : ExternFn : extern fn(int_to_print: i64) -> void;
     }
     print_i64(a);
     return 0;
+
 }

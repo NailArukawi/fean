@@ -117,12 +117,19 @@ pub const Parser = struct {
             return self.declaration_struct(scope);
         } else if (self.check(.Impl) and self.check_next(.identifier) and !self.check_next(.For)) {
             _ = self.pop().?;
+            if (impl)
+                @panic("Nested impl not allowed!");
             return self.declaration_impl(scope);
         } else if (self.check(.identifier) // X
         and self.check_next(.colon) // :
         and self.check_ahead(.identifier, 2) // num
         ) {
-            return self.declaration_variable(scope, false);
+            const variable = self.declaration_variable(scope, false);
+
+            if (impl)
+                self.declaration_try_method(scope, variable);
+
+            return variable;
         } else if (self.check(.identifier) // X
         and self.check_next(.colon) // :
         and (self.check_ahead(.colon, 2) or self.check_ahead(.equal, 2)) // : or =
@@ -140,13 +147,24 @@ pub const Parser = struct {
     fn declaration_try_method(self: *@This(), scope: *Node, parent_variable: *Node) void {
         _ = self;
         _ = scope;
-        const variable = parent_variable.variable;
-        if (variable.value != null and variable.value.?.* == .function) {
-            const function = variable.value.?.function; // todo look for mem leak
+        const variable_value: ?*Node = switch (parent_variable.*) {
+            .variable => |v| v.value,
+            .constant => |c| c.value,
+            else => @panic("Variable is not variable"),
+        };
+
+        const variable_name = switch (parent_variable.*) {
+            .variable => |v| v.name,
+            .constant => |c| c.name,
+            else => @panic("Variable is not variable"),
+        };
+
+        if (variable_value != null and variable_value.?.* == .function) {
+            const function = variable_value.?.function; // todo look for mem leak
 
             const result: Node = .{
                 .method = .{
-                    .name = variable.name,
+                    .name = variable_name,
                     .params = function.params,
                     .result = function.result,
                     .body = function.body,
@@ -732,17 +750,30 @@ pub const Parser = struct {
                 const args = self.arguments(scope);
                 self.consume_kind(.paren_right, "Expected call arguments to end with a )");
 
-                const callee = result;
+                if (result.* == Node.get) {
+                    const callee = result.get;
 
-                result = self.allocator.create(Node) catch unreachable;
-                result.* = Node{
-                    .call = .{
-                        // todo mem leak
-                        .name = callee.literal.data.identifier,
-                        .symbol = null,
-                        .arguments = args,
-                    },
-                };
+                    result.* = Node{
+                        .call = .{
+                            // todo mem leak
+                            .callee = .{ .method = callee },
+                            .symbol = null,
+                            .arguments = args,
+                        },
+                    };
+                } else {
+                    const callee = result;
+
+                    result = self.allocator.create(Node) catch unreachable;
+                    result.* = Node{
+                        .call = .{
+                            // todo mem leak
+                            .callee = .{ .function = callee.literal.data.identifier },
+                            .symbol = null,
+                            .arguments = args,
+                        },
+                    };
+                }
             } else if (self.of_kind(.dot)) {
                 self.check_err(.identifier, "missing identifier at X identifier.x");
                 const name = self.pop().?;

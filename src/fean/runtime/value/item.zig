@@ -1,6 +1,7 @@
 const Dict = @import("dict.zig").Dict;
 const Text = @import("text.zig").Text;
 const Function = @import("function.zig").Function;
+const Method = @import("function.zig").Method;
 const Object = @import("object.zig").Object;
 const Kind = @import("../../compiler/mod.zig").Kind;
 const Ref = @import("../mod.zig").Ref;
@@ -35,6 +36,10 @@ pub const Item = extern union {
 
     pub inline fn dict(self: @This()) *Dict {
         return self.resolve_object().dict();
+    }
+
+    pub inline fn method(self: @This()) *Method {
+        return self.resolve_object().method();
     }
 
     pub inline fn function(self: @This()) *Function {

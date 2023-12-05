@@ -1,4 +1,4 @@
-fn inner() -> i64 {
+inner : Fn : fn() -> i64 {
     i : i64 = 0;
     count : i64 = 10;
 

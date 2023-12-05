@@ -607,7 +607,10 @@ pub const Compiler = struct {
                 // don't emit the irblock into parent ir.
                 var detatch = false;
                 const old_depth: usize = self.depth;
-                if (extra != null and extra.?.kind() == .extra and extra.?.extra() == .detach) detatch = true;
+                if (extra != null and extra.?.kind() == .extra and extra.?.extra() == .detach)
+                    detatch = true;
+                if (extra != null and extra.?.kind() == .impl_target)
+                    detatch = true;
 
                 // todo make sure this is ok
                 const to_inline = false; //= scope != .head;
@@ -655,9 +658,8 @@ pub const Compiler = struct {
             },
             .impl => |*i| {
                 const impl_extra = Address.new_impl_target(i.this.resolved);
-
                 _ = try self.generate(i.body, scope, null, impl_extra);
-                unreachable;
+                //unreachable; TODO have not checked for soundness
             },
             .structure => |*s| {
                 if (scope.lookup_symbol(s.name) == null) {
@@ -767,13 +769,25 @@ pub const Compiler = struct {
                 }
             },
             .method => |meth| {
-                _ = meth;
-                @panic("No internal methods yet.");
+                switch (meth.is_extern) {
+                    true => {
+                        @panic("No extern methods yet.");
+                    },
+                    false => {
+                        if (extra.?.kind() != .impl_target)
+                            @panic("Method has no target to be implimented on!");
+
+                        const target = extra.?.impl_target();
+                        try self.generate_internal_method(node, scope, target);
+                    },
+                }
             },
             .function => |func| {
                 switch (func.is_extern) {
                     true => {
                         if (extra != null and extra.?.kind() == .impl_target) {
+                            // TODO remove old artifacts from method being the responsibility of the compiler
+                            // it is now handled by parser + resolver as it should be
                             @panic("No external methods yet.");
                         } else {
                             try self.generate_extern_function(node, scope, result.?);
@@ -781,8 +795,10 @@ pub const Compiler = struct {
                     },
                     false => {
                         if (extra != null and extra.?.kind() == .impl_target) {
+                            // TODO remove old artifacts from method being the responsibility of the compiler
+                            // it is now handled by parser + resolver as it should be
+                            std.debug.print("method: {?}", .{func});
                             @panic("No internal methods yet.");
-                            //try self.generate_internal_method(node, scope, extra.?.impl_target());
                         } else {
                             try self.generate_internal_function(node, scope, result.?);
                         }
@@ -959,12 +975,14 @@ pub const Compiler = struct {
                 }
                 unreachable;
             },
-            .call => {
+            .call => |call| {
                 // todo handle no registers!
                 const address = if (result != null) result.? else scope.get_temp().?;
                 defer if (result == null) scope.drop_temp();
-
-                try self.generate_call(node, scope, address, extra);
+                switch (call.callee) {
+                    .function => try self.generate_function_call(node, scope, address, extra),
+                    .method => try self.generate_method_call(node, scope, address, extra),
+                }
             },
             .get => |g| {
                 const child = (try self.generate(g.object, scope, null, extra)).?;
@@ -1553,10 +1571,19 @@ pub const Compiler = struct {
     }
 
     fn generate_internal_method(self: *@This(), node: *Node, scope: Scope, Self: *Kind) !void {
-        const method = node.function;
+        const method = node.method;
 
-        // todo params
+        if (Self.methods == null)
+            Self.methods = Methods.create(self.allocator, 1);
+
+        const object = try self.heap.alloc(@sizeOf(Method) + @sizeOf(?*Methods)); // todo this is dumb as fuck
+        const body = object.object().method();
+
+        // todo other method stuff
+
         try scope.push_instr(.{ .method_to_assemble = .{
+            .name = method.name,
+            .memory = body,
             .block = try self.generate(method.body.body, scope, null, Address.new_extra(.detach)),
             .Self = Self,
         } });
@@ -1598,11 +1625,22 @@ pub const Compiler = struct {
         } });
     }
 
-    fn generate_call(self: *@This(), node: *Node, scope: Scope, result: Address, _: ?Address) !void {
+    fn generate_method_call(self: *@This(), node: *Node, scope: Scope, result: Address, _: ?Address) !void {
         const call = node.call;
-        const fn_identity = scope.lookup_symbol(call.name).?;
+        const method_name = try self.copy_text(call.callee.method.field.unresolved);
+        const method_name_lit = try self.push_literal(.{ .object = method_name }, .Text);
+        _ = method_name_lit;
 
-        const name = try self.copy_text(call.name);
+        // the stack adress for the object of method
+        const object_lit = try self.generate_literal(node, scope, result, null);
+        _ = object_lit;
+    }
+
+    fn generate_function_call(self: *@This(), node: *Node, scope: Scope, result: Address, _: ?Address) !void {
+        const call = node.call;
+        const fn_identity = scope.lookup_symbol(call.callee.function).?;
+
+        const name = try self.copy_text(call.callee.function);
         const name_lit = try self.push_literal(.{ .object = name }, .Text);
 
         // the stack adress for the callable function
@@ -1906,7 +1944,7 @@ pub const Compiler = struct {
 
     fn copy_text(self: *@This(), data: []const u8) !*heap.Ref {
         const string = try self.allocator.alloc(u8, data.len);
-        mem.copy(u8, string, data);
+        mem.copyForwards(u8, string, data);
         const body = try heap.Ref.create(self.allocator, @intFromPtr(string.ptr));
 
         const text_copy = try Text.create_const(self.allocator, data.len, body);

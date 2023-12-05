@@ -14,4 +14,4 @@ impl Square {
 }
 
 ree : Square = Square { .x = 8, .y = 16};
-//ree.area();
+print_i64(ree.area());

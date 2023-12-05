@@ -7,22 +7,21 @@ const Kind = mod.Kind;
 const Function = @import("../runtime/mod.zig").Function;
 const Method = @import("../runtime/mod.zig").Method;
 
-pub const AddressKind = enum(u8) {
-    not_set,
-    register,
-    literal,
-    upvalue,
-    global,
-    temporary,
-    pair,
-    field,
-    impl_target,
+pub const AddressKind = enum(u4) {
+    register = 0,
+    literal = 1,
+    upvalue = 2,
+    global = 3,
+    temporary = 4,
+    pair = 5,
+    field = 6,
+    impl_target = 7,
 
-    extra,
+    extra = 8,
 };
 
-pub const Extra = enum(u56) {
-    detach,
+pub const Extra = enum(u60) {
+    detach, // TODO fn is not real detatch?
     copy_if_move,
     set_mode,
 };
@@ -30,63 +29,57 @@ pub const Extra = enum(u56) {
 pub const Address = struct {
     inner: usize,
 
-    pub inline fn new_not_set() @This() {
+    pub inline fn new_literal(address: u60) @This() {
         return @This(){
-            .inner = @as(usize, @intCast(0)) | (@as(usize, @intCast(@intFromEnum(AddressKind.not_set))) << 56),
+            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.literal))) << 60),
         };
     }
 
-    pub inline fn new_literal(address: u56) @This() {
+    pub inline fn new_upvalue(address: u60) @This() {
         return @This(){
-            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.literal))) << 56),
-        };
-    }
-
-    pub inline fn new_upvalue(address: u56) @This() {
-        return @This(){
-            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.upvalue))) << 56),
+            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.upvalue))) << 60),
         };
     }
 
     pub inline fn new_global(symbol: Symbol) @This() {
         return @This(){
-            .inner = @intFromPtr(symbol) | (@as(usize, @intCast(@intFromEnum(AddressKind.upvalue))) << 56),
+            .inner = @intFromPtr(symbol) | (@as(usize, @intCast(@intFromEnum(AddressKind.upvalue))) << 60),
         };
     }
 
     pub inline fn new_temporary(address: u10) @This() {
         return @This(){
-            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.temporary))) << 56),
+            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.temporary))) << 60),
         };
     }
 
     pub inline fn new_register(address: u10) @This() {
         return @This(){
-            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.register))) << 56),
+            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.register))) << 60),
         };
     }
 
-    pub inline fn new_pair(id: u56) @This() {
+    pub inline fn new_pair(id: u60) @This() {
         return @This(){
-            .inner = @as(usize, @intCast(id)) | (@as(usize, @intCast(@intFromEnum(AddressKind.pair))) << 56),
+            .inner = @as(usize, @intCast(id)) | (@as(usize, @intCast(@intFromEnum(AddressKind.pair))) << 60),
         };
     }
 
-    pub inline fn new_field(address: u56) @This() {
+    pub inline fn new_field(address: u60) @This() {
         return @This(){
-            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.field))) << 56),
+            .inner = @as(usize, @intCast(address)) | (@as(usize, @intCast(@intFromEnum(AddressKind.field))) << 60),
         };
     }
 
     pub inline fn new_impl_target(address: *Kind) @This() {
         return @This(){
-            .inner = @intFromPtr(address) | (@as(usize, @intCast(@intFromEnum(AddressKind.impl_target))) << 56),
+            .inner = @intFromPtr(address) | (@as(usize, @intCast(@intFromEnum(AddressKind.impl_target))) << 60),
         };
     }
 
     pub inline fn new_extra(e: Extra) @This() {
         return @This(){
-            .inner = @intFromEnum(e) | (@as(usize, @intCast(@intFromEnum(AddressKind.extra))) << 56),
+            .inner = @intFromEnum(e) | (@as(usize, @intCast(@intFromEnum(AddressKind.extra))) << 60),
         };
     }
 
@@ -97,16 +90,16 @@ pub const Address = struct {
         };
     }
 
-    pub inline fn upvalue(self: @This()) u56 {
-        return @as(u56, @truncate(self.inner));
+    pub inline fn upvalue(self: @This()) u60 {
+        return @as(u60, @truncate(self.inner));
     }
 
-    pub inline fn literal(self: @This()) u56 {
-        return @as(u56, @truncate(self.inner));
+    pub inline fn literal(self: @This()) u60 {
+        return @as(u60, @truncate(self.inner));
     }
 
-    pub inline fn global(self: @This()) u56 {
-        return @as(u56, @truncate(self.inner));
+    pub inline fn global(self: @This()) u60 {
+        return @as(u60, @truncate(self.inner));
     }
 
     pub inline fn temporary(self: @This()) u10 {
@@ -117,24 +110,25 @@ pub const Address = struct {
         return @as(u10, @truncate(self.inner));
     }
 
-    pub inline fn pair(self: @This()) u56 {
-        return @as(u56, @truncate(self.inner));
+    pub inline fn pair(self: @This()) u60 {
+        return @as(u60, @truncate(self.inner));
     }
 
     pub inline fn kind(self: @This()) AddressKind {
-        return @as(AddressKind, @enumFromInt(@as(u8, @truncate(self.inner >> 56))));
+        return @as(AddressKind, @enumFromInt(@as(u8, @truncate(self.inner >> 60))));
     }
 
-    pub inline fn field(self: @This()) u56 {
-        return @as(u56, @truncate(self.inner));
+    pub inline fn field(self: @This()) u60 {
+        return @as(u60, @truncate(self.inner));
     }
 
     pub inline fn impl_target(self: @This()) *Kind {
-        return @as(*Kind, @ptrFromInt(self.inner ^ (0xFFFFFFFFFFFFFF)));
+        const ptr_int: u60 = @truncate(self.inner);
+        return @as(*Kind, @ptrFromInt(@as(usize, ptr_int)));
     }
 
     pub inline fn extra(self: @This()) Extra {
-        return @as(Extra, @enumFromInt(@as(u56, @truncate(self.inner))));
+        return @as(Extra, @enumFromInt(@as(u60, @truncate(self.inner))));
     }
 
     pub inline fn raw(self: @This()) usize {
@@ -145,7 +139,6 @@ pub const Address = struct {
         const adress_kind = self.kind();
 
         switch (adress_kind) {
-            .not_set => unreachable,
             .register => {
                 const reg = self.register();
                 return std.fmt.bufPrint(buffer, "reg[{d:4}]", .{reg});
@@ -359,6 +352,9 @@ pub const Instr = union(enum) {
     block: *IRBlock,
     destination: Address,
     method_to_assemble: struct {
+        name: []const u8,
+        // function objects
+        memory: *Method,
         // block is an raw adress
         block: ?Address,
         Self: *Kind,
